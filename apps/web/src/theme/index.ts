@@ -48,7 +48,56 @@ const themeOptions: ThemeOptions = {
     },
     MuiPaper: { styleOverrides: { root: { backgroundImage: 'none' } } },
     MuiTextField: { defaultProps: { variant: 'outlined', size: 'small' } },
-    MuiInputBase: { styleOverrides: { root: { fontSize: '0.875rem' } } },
+    MuiInputBase: {
+      styleOverrides: {
+        root: {
+          fontSize: '0.875rem',
+          direction: 'rtl',
+          '& input, & textarea': {
+            direction: 'rtl',
+            textAlign: 'right',
+          },
+          /* Business values that are naturally read left-to-right still get
+             an explicit direction, while their field remains aligned with
+             the surrounding Persian form. */
+          '& input[type="email"], & input[type="url"]': {
+            direction: 'ltr',
+            textAlign: 'left',
+          },
+          '& input[type="tel"], & input[type="number"], & input[type="date"], & input[type="time"]': {
+            direction: 'ltr',
+            textAlign: 'right',
+          },
+          '& input[dir="ltr"], & textarea[dir="ltr"]': {
+            direction: 'ltr',
+            textAlign: 'left',
+          },
+          '& input::placeholder, & textarea::placeholder': {
+            textAlign: 'inherit',
+            opacity: 0.72,
+          },
+        },
+      },
+    },
+    MuiInputLabel: {
+      styleOverrides: {
+        root: { direction: 'rtl', transformOrigin: 'top right' },
+      },
+    },
+    MuiSelect: {
+      styleOverrides: {
+        select: { direction: 'rtl', textAlign: 'right' },
+      },
+    },
+    MuiAutocomplete: {
+      styleOverrides: {
+        root: { direction: 'rtl' },
+        inputRoot: { direction: 'rtl' },
+        input: { direction: 'rtl', textAlign: 'right' },
+        tag: { direction: 'rtl' },
+        paper: { direction: 'rtl' },
+      },
+    },
     MuiTableCell: {
       styleOverrides: {
         root: { padding: '12px 16px', fontSize: '0.875rem' },
@@ -70,8 +119,13 @@ const themeOptions: ThemeOptions = {
     MuiListItemButton: {
       styleOverrides: {
         root: {
+          direction: 'rtl',
+          textAlign: 'right',
           borderRadius: 8,
           margin: '4px 8px',
+          '& .MuiListItemText-root': { minWidth: 0, textAlign: 'right' },
+          '& .MuiListItemText-primary, & .MuiListItemText-secondary': { textAlign: 'right' },
+          '& .MuiListItemIcon-root': { flexShrink: 0 },
           '&.Mui-selected': {
             backgroundColor: '#EFF6FF',
             color: '#1E3A8A',

@@ -10,8 +10,8 @@ interface PageHeaderProps {
 
 export default function PageHeader({ title, subtitle, crumbs, actions }: PageHeaderProps) {
   return (
-    <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'flex-start', mb: 3, flexWrap: 'wrap' }}>
-      <Box>
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: { xs: 1.5, sm: 2 }, alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', minWidth: 0 }}>
+      <Box sx={{ minWidth: 0, flex: '1 1 260px' }}>
         {crumbs?.length ? (
           <Breadcrumbs sx={{ mb: 0.75, '& .MuiBreadcrumbs-separator': { mx: 1 } }}>
             {crumbs.map((crumb) => (
@@ -30,7 +30,7 @@ export default function PageHeader({ title, subtitle, crumbs, actions }: PageHea
           </Typography>
         ) : null}
       </Box>
-      {actions}
+      {actions ? <Box sx={{ minWidth: 0, maxWidth: '100%', flex: '0 1 auto', display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 1, '& > *': { minWidth: 0, maxWidth: '100%' } }}>{actions}</Box> : null}
     </Box>
   );
 }

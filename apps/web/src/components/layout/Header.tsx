@@ -16,6 +16,7 @@ import { notifications } from '../../mock/data.ts';
 import { formatRelative } from '../../utils/format.ts';
 import { useApp } from '../../context/AppContext.tsx';
 import UserAvatar from '../common/UserAvatar.tsx';
+import QuickCreateMenu from '../common/QuickCreateMenu.tsx';
 
 export default function Header({ onMenu }: { onMenu: () => void }) {
   const { user, organization, organizations, setOrganizationId } = useApp();
@@ -25,7 +26,7 @@ export default function Header({ onMenu }: { onMenu: () => void }) {
 
   return (
     <AppBar position="sticky" color="inherit" elevation={0}>
-      <Toolbar sx={{ gap: 2, minHeight: 72 }}>
+      <Toolbar sx={{ gap: { xs: 1, sm: 2 }, minHeight: { xs: 60, sm: 72 }, minWidth: 0, px: { xs: 1.5, sm: 2 } }}>
         <IconButton onClick={onMenu} sx={{ display: { md: 'none' } }}>
           <MenuIcon />
         </IconButton>
@@ -41,10 +42,12 @@ export default function Header({ onMenu }: { onMenu: () => void }) {
             border: '1px solid',
             borderColor: 'divider',
             cursor: 'pointer',
-            minWidth: 180,
+            minWidth: { xs: 0, sm: 180 },
+            maxWidth: { xs: 42, sm: 'none' },
+            overflow: 'hidden',
           }}
         >
-          <Box>
+          <Box sx={{ display: { xs: 'none', sm: 'block' }, minWidth: 0 }}>
             <Typography variant="caption" color="text.secondary">
               فضای کاری
             </Typography>
@@ -68,6 +71,7 @@ export default function Header({ onMenu }: { onMenu: () => void }) {
           }}
         />
         <Box sx={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ display: { xs: 'none', sm: 'block' } }}><QuickCreateMenu /></Box>
           <IconButton onClick={(event) => setNoteAnchor(event.currentTarget)}>
             <Badge color="error" badgeContent={unread}>
               <NotificationsNoneOutlined />
