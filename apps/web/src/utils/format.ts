@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import jalaliday from 'jalaliday';
 import type { Priority, TaskStatus, TicketStatus, DeviceStatus, ProjectStatus, CustomerStatus, SessionStatus, UserRole } from '../types/index.ts';
+import { statusLabels } from '../constants/statuses.ts';
 
 dayjs.extend(jalaliday);
 
@@ -46,19 +47,9 @@ export const priorityLabel: Record<Priority, string> = {
   urgent: 'فوری',
 };
 
-export const taskStatusLabel: Record<TaskStatus, string> = {
-  todo: 'انجام نشده',
-  in_progress: 'در حال انجام',
-  review: 'بازبینی',
-  done: 'انجام‌شده',
-};
+export const taskStatusLabel: Record<TaskStatus, string> = statusLabels.task;
 
-export const ticketStatusLabel: Record<TicketStatus, string> = {
-  open: 'باز',
-  in_progress: 'در حال بررسی',
-  waiting: 'در انتظار',
-  closed: 'بسته‌شده',
-};
+export const ticketStatusLabel: Record<TicketStatus, string> = statusLabels.ticket;
 
 export const deviceStatusLabel: Record<DeviceStatus, string> = {
   online: 'آنلاین',
@@ -66,12 +57,7 @@ export const deviceStatusLabel: Record<DeviceStatus, string> = {
   busy: 'مشغول',
 };
 
-export const projectStatusLabel: Record<ProjectStatus, string> = {
-  active: 'فعال',
-  on_hold: 'متوقف',
-  completed: 'تکمیل‌شده',
-  archived: 'بایگانی',
-};
+export const projectStatusLabel: Record<ProjectStatus, string> = statusLabels.project;
 
 export const customerStatusLabel: Record<CustomerStatus, string> = {
   active: 'فعال',

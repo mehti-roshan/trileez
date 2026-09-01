@@ -25,7 +25,7 @@ export default function QuickCreateMenu() {
   const openItem = (item: Item) => {
     setAnchor(null);
     // Core entities already expose richer, relationship-aware forms on their pages.
-    if (['customer', 'project', 'task'].includes(item.key)) { navigate(item.route); return; }
+    if (['customer', 'project', 'task', 'ticket'].includes(item.key)) { navigate(item.route); return; }
     setSelected(item);
   };
   return <><Button variant="contained" startIcon={<Add />} onClick={(event) => setAnchor(event.currentTarget)}>ایجاد سریع</Button><Menu anchorEl={anchor} open={Boolean(anchor)} onClose={() => setAnchor(null)} slotProps={{ paper: { sx: { maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100vh - 24px)' } } }}>{items.map((item) => <MenuItem key={item.key} onClick={() => openItem(item)} sx={{ whiteSpace: 'normal' }}><ListItemIcon>{item.icon}</ListItemIcon>{item.label}</MenuItem>)}</Menu>{selected && <EntityFormDialog open title={`ایجاد ${selected.label}`} fields={selected.fields} onClose={() => setSelected(null)} onSubmit={() => { setSelected(null); setSaved(true); navigate(selected.route); }} submitLabel="ایجاد" />}<Snackbar open={saved} autoHideDuration={2500} onClose={() => setSaved(false)}><Alert severity="success">مورد جدید ایجاد شد و در فهرست مربوطه قابل مشاهده است.</Alert></Snackbar></>;

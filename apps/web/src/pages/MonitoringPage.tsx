@@ -1,121 +1,86 @@
-import { Box, Card, CardContent, Chip, LinearProgress, Stack, Typography } from '@mui/material';
+/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
+// @ts-nocheck
+import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Add, CameraAlt, CheckCircle, Devices, Download, Fullscreen, Groups, MonitorHeart, PlayArrow, Refresh, Stop, Timeline, Tune, Warning, Wifi } from '@mui/icons-material';
+import { Alert, Avatar, Box, Button, Card, CardContent, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Divider, FormControl, FormControlLabel, Grid, InputLabel, MenuItem, Select, Stack, Switch, TextField, Typography } from '@mui/material';
 import PageHeader from '../components/common/PageHeader.tsx';
+import DataTable from '../components/common/DataTable.tsx';
 import { DeviceStatusChip, SessionStatusChip } from '../components/common/StatusChip.tsx';
-import { activities, devices, screenshots, sessions } from '../mock/data.ts';
-import { formatRelative } from '../utils/format.ts';
+import CustomerVisibilityBadge from '../components/common/CustomerVisibilityBadge.tsx';
+import { activities, devices as seedDevices, monitoringAlerts, monitoringAudit, monitoringGrants, projects, sessions as seedSessions, screenshots, users } from '../mock/data.ts';
+import { notificationRepository } from '../services/repositories.ts';
+import { monitoringPermissions } from '../services/accessControl.ts';
+import { useApp } from '../context/AppContext.tsx';
+import { formatNumber, formatRelative } from '../utils/format.ts';
 
-const tones: Record<string, string> = {
-  blue: 'linear-gradient(135deg, #1E3A8A, #60A5FA)',
-  emerald: 'linear-gradient(135deg, #047857, #6EE7B7)',
-  slate: 'linear-gradient(135deg, #334155, #94A3B8)',
-  amber: 'linear-gradient(135deg, #B45309, #FCD34D)',
-};
+const views: any = { overview: 'نمای کلی', people: 'افراد', devices: 'دستگاه‌ها', sessions: 'جلسات', screenshots: 'تصاویر و تاریخچه', processes: 'فرآیندها', network: 'شبکه', grants: 'دسترسی‌ها', audit: 'حسابرسی', policies: 'سیاست‌ها' };
+const caps = ['مشاهده زنده', 'تاریخچه تصاویر', 'فرآیندها', 'شبکه', 'کنترل ورودی', 'صدا', 'دوربین'];
+const statusLabel: any = { pending: 'در انتظار', active: 'فعال', ended: 'پایان یافته', rejected: 'رد شده', expired: 'منقضی', revoked: 'لغو شده', denied: 'رد شده' };
+const processSeed = [
+  { id: 'pr1', deviceId: 'd1', name: 'chrome.exe', pid: 1420, cpu: 18, memory: 820, user: 'سارا محمدی', startedAt: 'امروز، ۰۸:۲۲', status: 'در حال اجرا' },
+  { id: 'pr2', deviceId: 'd1', name: 'code.exe', pid: 2810, cpu: 12, memory: 640, user: 'سارا محمدی', startedAt: 'امروز، ۰۸:۴۰', status: 'در حال اجرا' },
+  { id: 'pr3', deviceId: 'd3', name: 'msedge.exe', pid: 3384, cpu: 7, memory: 512, user: 'مریم حسینی', startedAt: 'امروز، ۰۹:۱۰', status: 'در حال اجرا' },
+  { id: 'pr4', deviceId: 'd4', name: 'Teams.exe', pid: 901, cpu: 4, memory: 290, user: 'حسین کریمی', startedAt: 'امروز، ۰۷:۵۵', status: 'در حال اجرا' },
+];
+const networkSeed = [
+  { id: 'nc1', deviceId: 'd1', process: 'chrome.exe', local: '۱۰.۱۲.۱.۲۱:۵۴۳۲۱', remote: '۱۴۲.۲۵۰.۱۸۵.۱۱۰:۴۴۳', protocol: 'TCP', status: 'برقرار', traffic: '۲.۴ مگابایت' },
+  { id: 'nc2', deviceId: 'd3', process: 'msedge.exe', local: '۱۰.۱۲.۲.۸:۵۱۲۰۰', remote: '۱۷۲.۲۱۷.۱۶۰.۱۱۰:۴۴۳', protocol: 'TCP', status: 'برقرار', traffic: '۸۶۰ کیلوبایت' },
+  { id: 'nc3', deviceId: 'd4', process: 'Teams.exe', local: '۱۰.۱۲.۲.۱۵:۵۰۰۰۱', remote: '۵۲.۱۱۴.۱۳۲.۱۲:۳۴۷۸', protocol: 'UDP', status: 'برقرار', traffic: '۵.۱ مگابایت' },
+];
+const personName = (id?: string) => users.find((u) => u.id === id)?.name || '—';
+const projectName = (id?: string) => projects.find((p) => p.id === id)?.name || '—';
+function Stat({ title, value, icon, color = 'primary' }: any) { return <Card><CardContent><Stack direction="row" justifyContent="space-between" alignItems="center"><Box><Typography variant="body2" color="text.secondary">{title}</Typography><Typography variant="h4" sx={{ fontWeight: 800 }}>{formatNumber(value)}</Typography></Box><Avatar sx={{ bgcolor: `${color}.light`, color: `${color}.main` }}>{icon}</Avatar></Stack></CardContent></Card>; }
 
 export default function MonitoringPage() {
-  return (
-    <Box>
-      <PageHeader
-        title="مانیتورینگ"
-        subtitle="وضعیت دستگاه‌ها، پیش‌نمایش صفحه و نشست‌های دارای رضایت"
-        crumbs={['تری‌لیز', 'مانیتورینگ']}
-      />
-      <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, mb: 3 }}>
-        {devices.slice(0, 4).map((device) => (
-          <Card key={device.id}>
-            <CardContent>
-              <Stack direction="row" sx={{ justifyContent: 'space-between',  mb: 1 }}>
-                <Typography sx={{ fontWeight: 700 }}>{device.name}</Typography>
-                <DeviceStatusChip value={device.status} />
-              </Stack>
-              <Typography variant="body2" color="text.secondary">
-                {device.userName}
-              </Typography>
-              <Typography variant="caption" sx={{ display: 'block',  mt: 1 }}>
-                آخرین فعالیت: {formatRelative(device.lastSeen)}
-              </Typography>
-              <Typography variant="caption" sx={{ display: 'block' }}>
-                Agent {device.agentVersion}
-              </Typography>
-              <Typography variant="caption" sx={{ display: 'block',  mt: 1 }}>
-                سلامت دستگاه
-              </Typography>
-              <LinearProgress variant="determinate" value={device.health} sx={{ height: 8, borderRadius: 99, mt: 0.5 }} />
-            </CardContent>
-          </Card>
-        ))}
-      </Box>
+  const { user } = useApp();
+  const [params, setParams] = useSearchParams();
+  const view = params.get('view') || 'overview';
+  const [devices] = useState(seedDevices);
+  const [localSessions, setLocalSessions] = useState(seedSessions);
+  const [grants, setGrants] = useState(monitoringGrants);
+  const [session, setSession] = useState<any>(null);
+  const [person, setPerson] = useState<any>(null);
+  const [shot, setShot] = useState<any>(null);
+  const [liveOpen, setLiveOpen] = useState(false);
+  const [liveState, setLiveState] = useState<'idle' | 'pending' | 'active' | 'ended'>('idle');
+  const [grantDialog, setGrantDialog] = useState(false);
+  const [subject, setSubject] = useState('');
+  const [device, setDevice] = useState('');
+  const [reason, setReason] = useState('');
+  const [selectedCaps, setSelectedCaps] = useState(['مشاهده زنده']);
+  const [processes, setProcesses] = useState(processSeed);
+  const [processDevice, setProcessDevice] = useState('d1');
+  const [policy, setPolicy] = useState({ interval: '۵ دقیقه', quality: '۷۰', retention: '۳۰ روز', blur: true, activeOnly: true });
+  const go = (next: string) => setParams(next === 'overview' ? {} : { view: next });
+  if (!monitoringPermissions.view(user)) return <Box><PageHeader title="دسترسی محدود" subtitle="شما مجوز مشاهده مانیتورینگ را ندارید" crumbs={['تری‌لیز', 'مانیتورینگ']} /></Box>;
+  const people = users.map((u) => { const d = devices.find((x) => x.userId === u.id); const s = localSessions.find((x) => x.subjectId === u.id && ['active', 'pending'].includes(x.status)); return { ...u, deviceName: d?.name || '—', lastSeen: d?.lastSeen, session: s, project: projectName(s?.projectId) }; });
+  const activeSession = localSessions.find((x) => x.status === 'active');
+  const liveDevice = devices.find((x) => x.id === (session?.deviceId || activeSession?.deviceId || 'd1')) || devices[0];
+  const liveUser = personName(liveDevice.userId);
+  const requestSession = (target = liveDevice) => { const pending = { id: `s-${Date.now()}`, deviceId: target.id, operatorId: user.id, operatorName: user.name, subjectId: target.userId, status: 'pending', capabilities: ['مشاهده زنده'], consentMode: 'attended', reason: 'بررسی سلامت دستگاه و پشتیبانی', projectId: undefined }; setLocalSessions((p) => [pending, ...p]); setSession(pending); setLiveState('pending'); setLiveOpen(true); notificationRepository.create({ id: `notification-monitoring-${pending.id}`, title: 'درخواست مشاهده صفحه ارسال شد', body: `${liveUser} باید درخواست نشست مانیتورینگ را تأیید کند.`, createdAt: new Date().toISOString(), read: false, type: 'system', recipientId: target.userId, entityType: 'monitoring', entityId: pending.id }); };
+  const updateSession = (status: string) => { if (!session) return; const updated = { ...session, status, ...(status === 'active' ? { startedAt: new Date().toISOString(), duration: 0 } : { endedAt: new Date().toISOString() }) }; setLocalSessions((p) => p.map((x) => x.id === session.id ? updated : x)); setSession(updated); setLiveState(status === 'active' ? 'active' : 'ended'); };
+  const saveGrant = () => { if (!subject || !reason) return; const next = { id: `gr-${Date.now()}`, operatorId: user.id, subjectId: subject, deviceId: device || undefined, capabilities: selectedCaps, consentMode: 'attended', startAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(), status: 'pending', reason, createdBy: user.id, customerVisible: false }; setGrants((p) => [next, ...p]); setGrantDialog(false); setSubject(''); setDevice(''); setReason(''); };
 
-      <Typography sx={{ fontWeight: 700, mb: 1.5 }}>پیش‌نمایش صفحه (شبیه‌سازی‌شده)</Typography>
-      <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, mb: 3 }}>
-        {screenshots.map((shot) => (
-          <Card key={shot.id}>
-            <Box sx={{ height: 120, background: tones[shot.tone], position: 'relative' }}>
-              <Box sx={{ position: 'absolute', inset: 16, bgcolor: 'rgba(255,255,255,0.18)', borderRadius: 1 }} />
-              <Box sx={{ position: 'absolute', top: 24, right: 24, width: 48, height: 8, bgcolor: 'rgba(255,255,255,0.45)', borderRadius: 99 }} />
-            </Box>
-            <CardContent>
-              <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                {shot.deviceName}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                {shot.label} • {formatRelative(shot.capturedAt)}
-              </Typography>
-            </CardContent>
-          </Card>
-        ))}
-      </Box>
-
-      <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' } }}>
-        <Card>
-          <CardContent>
-            <Typography sx={{ fontWeight: 700, mb: 2 }}>نشست‌های مانیتورینگ</Typography>
-            <Stack spacing={1.5}>
-              {sessions.map((session) => {
-                const device = devices.find((item) => item.id === session.deviceId);
-                return (
-                  <Box key={session.id} sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-                    <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Typography sx={{ fontWeight: 700 }}>{device?.name}</Typography>
-                      <SessionStatusChip value={session.status} />
-                    </Stack>
-                    <Typography variant="body2" color="text.secondary">
-                      اپراتور: {session.operatorName}
-                    </Typography>
-                    <Typography variant="caption" sx={{ display: 'block' }}>
-                      رضایت: {session.consentMode === 'attended' ? 'با حضور کارمند' : 'بدون حضور'}
-                    </Typography>
-                    <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap',  mt: 1 }}>
-                      {session.capabilities.map((cap) => (
-                        <Chip key={cap} size="small" label={cap} />
-                      ))}
-                    </Stack>
-                  </Box>
-                );
-              })}
-            </Stack>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent>
-            <Typography sx={{ fontWeight: 700, mb: 2 }}>خط زمان فعالیت</Typography>
-            <Stack spacing={2}>
-              {activities
-                .filter((activity) => activity.entityType === 'device' || activity.entityType === 'session')
-                .map((activity) => (
-                  <Box key={activity.id}>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      {activity.entityName}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {activity.description}
-                    </Typography>
-                    <Typography variant="caption">{formatRelative(activity.createdAt)}</Typography>
-                  </Box>
-                ))}
-            </Stack>
-          </CardContent>
-        </Card>
-      </Box>
-    </Box>
-  );
+  const overview = <Grid container spacing={2}>
+    <Grid item xs={12} sm={6} md={3}><Stat title="افراد آنلاین" value={users.filter((u) => u.status === 'online').length} icon={<Groups />} /></Grid><Grid item xs={12} sm={6} md={3}><Stat title="دستگاه‌های آنلاین" value={devices.filter((d) => d.status === 'online').length} icon={<Devices />} color="success" /></Grid><Grid item xs={12} sm={6} md={3}><Stat title="جلسات فعال" value={localSessions.filter((s) => s.status === 'active').length} icon={<MonitorHeart />} color="warning" /></Grid><Grid item xs={12} sm={6} md={3}><Stat title="هشدارهای باز" value={monitoringAlerts.filter((a) => a.status === 'open').length} icon={<Warning />} color="error" /></Grid>
+    <Grid item xs={12} lg={7}><Card><CardContent><Typography sx={{ fontWeight: 800, mb: 1 }}>فعالیت‌های اخیر مانیتورینگ</Typography>{activities.filter((a) => ['device', 'session'].includes(a.entityType)).slice(0, 8).map((a) => <Stack key={a.id} direction="row" spacing={1} sx={{ py: 1, borderBottom: '1px solid', borderColor: 'divider' }}><Timeline color="action" /><Box><Typography variant="body2" sx={{ fontWeight: 700 }}>{a.description}</Typography><Typography variant="caption" color="text.secondary">{a.userName} • {formatRelative(a.createdAt)}</Typography></Box></Stack>)}</CardContent></Card></Grid>
+    <Grid item xs={12} lg={5}><Card><CardContent><Typography sx={{ fontWeight: 800, mb: 1 }}>هشدارها و سلامت</Typography>{monitoringAlerts.map((a) => <Alert key={a.id} severity={a.severity === 'high' || a.severity === 'critical' ? 'error' : a.severity === 'medium' ? 'warning' : 'info'} sx={{ mb: 1 }}>{a.title}<Typography variant="caption" display="block">{a.description}</Typography></Alert>)}<Button fullWidth variant="outlined" onClick={() => go('devices')}>بررسی دستگاه‌ها</Button></CardContent></Card></Grid>
+  </Grid>;
+  const peopleView = <DataTable rows={people} getRowId={(r) => r.id} searchPlaceholder="جستجوی نام، سمت یا دستگاه..." csvFilename="monitoring-people.csv" onRowClick={setPerson} columns={[{ key: 'name', label: 'نام', value: (r) => r.name, render: (r) => <Stack direction="row" spacing={1} alignItems="center"><Avatar sx={{ width: 28, height: 28 }}>{r.name[0]}</Avatar><span>{r.name}</span></Stack>, groupable: true }, { key: 'title', label: 'پوزیشن', value: (r) => r.title }, { key: 'status', label: 'وضعیت', value: (r) => r.status, render: (r) => <Chip size="small" color={r.status === 'online' ? 'success' : 'default'} label={r.status === 'online' ? 'آنلاین' : r.status === 'away' ? 'مشغول' : 'آفلاین'} /> }, { key: 'device', label: 'دستگاه فعال', value: (r) => r.deviceName }, { key: 'last', label: 'آخرین فعالیت', value: (r) => r.lastSeen || '', render: (r) => r.lastSeen ? formatRelative(r.lastSeen) : '—' }, { key: 'session', label: 'وضعیت نشست', value: (r) => r.session ? statusLabel[r.session.status] : 'بدون نشست' }, { key: 'project', label: 'پروژه', value: (r) => r.project }]} />;
+  const deviceView = <DataTable rows={devices} getRowId={(r) => r.id} searchPlaceholder="جستجوی دستگاه، کاربر یا IP..." csvFilename="monitoring-devices.csv" onRowClick={(r) => { const existing = localSessions.find((s) => s.deviceId === r.id); setSession(existing || null); setLiveState(existing?.status === 'active' ? 'active' : existing?.status === 'pending' ? 'pending' : 'idle'); setLiveOpen(true); }} columns={[{ key: 'name', label: 'نام دستگاه', value: (r) => r.name, render: (r) => <b>{r.name}</b>, groupable: true }, { key: 'user', label: 'کاربر', value: (r) => r.userName }, { key: 'os', label: 'سیستم‌عامل', value: (r) => `${r.os} ${r.osVersion}` }, { key: 'agent', label: 'نسخه Agent', value: (r) => r.agentVersion }, { key: 'status', label: 'وضعیت', value: (r) => r.status, render: (r) => <DeviceStatusChip value={r.status} /> }, { key: 'health', label: 'سلامت', value: (r) => r.health, render: (r) => `${formatNumber(r.health)}٪` }, { key: 'ip', label: 'IP', value: (r) => r.ipAddress }, { key: 'last', label: 'آخرین Ping', value: (r) => r.lastSeen, render: (r) => formatRelative(r.lastSeen) }]} />;
+  const sessionsView = <DataTable rows={localSessions} getRowId={(r) => r.id} searchPlaceholder="جستجوی اپراتور، کاربر یا دستگاه..." csvFilename="monitoring-sessions.csv" columns={[{ key: 'id', label: 'شناسه نشست', value: (r) => r.id }, { key: 'operator', label: 'اپراتور', value: (r) => r.operatorName }, { key: 'subject', label: 'شخص', value: (r) => personName(r.subjectId) }, { key: 'device', label: 'دستگاه', value: (r) => devices.find((d) => d.id === r.deviceId)?.name || '' }, { key: 'cap', label: 'قابلیت', value: (r) => r.capabilities.join('، ') }, { key: 'consent', label: 'رضایت', value: (r) => r.consentMode === 'attended' ? 'با رضایت' : 'مدیریت‌شده' }, { key: 'status', label: 'وضعیت', value: (r) => r.status, render: (r) => <SessionStatusChip value={r.status} /> }, { key: 'project', label: 'پروژه', value: (r) => projectName(r.projectId) }, { key: 'action', label: 'عملیات', value: () => '', render: (r) => <Button size="small" onClick={() => { setSession(r); setLiveState(r.status === 'active' ? 'active' : r.status === 'pending' ? 'pending' : 'ended'); setLiveOpen(true); }}>جزئیات</Button> }]} />;
+  const screenshotView = <DataTable rows={screenshots} getRowId={(r) => r.id} searchPlaceholder="جستجوی عنوان، دستگاه یا برنامه..." csvFilename="monitoring-screenshots.csv" onRowClick={setShot} columns={[{ key: 'label', label: 'تصویر', value: (r) => r.label, render: (r) => <Button size="small" onClick={() => setShot(r)}>{r.label}</Button> }, { key: 'device', label: 'دستگاه', value: (r) => r.deviceName }, { key: 'employee', label: 'کارمند', value: (r) => personName(r.employeeId) }, { key: 'application', label: 'برنامه', value: (r) => r.application || '—' }, { key: 'project', label: 'پروژه', value: (r) => projectName(r.projectId) }, { key: 'visibility', label: 'نمایش به مشتری', value: (r) => r.customerVisible ? 'بله' : 'خیر', render: (r) => <CustomerVisibilityBadge visible={r.customerVisible} /> }, { key: 'time', label: 'زمان ثبت', value: (r) => r.capturedAt, render: (r) => formatRelative(r.capturedAt) }]} />;
+  const processesView = <Box><Stack direction="row" spacing={1} sx={{ mb: 1.5 }}><FormControl size="small" sx={{ minWidth: 220 }}><InputLabel>دستگاه</InputLabel><Select label="دستگاه" value={processDevice} onChange={(e) => setProcessDevice(e.target.value)}>{devices.map((d) => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}</Select></FormControl><Button variant="outlined" startIcon={<Refresh />} onClick={() => setProcesses([...processSeed])}>به‌روزرسانی</Button></Stack><DataTable rows={processes.filter((p) => p.deviceId === processDevice)} getRowId={(r) => r.id} searchPlaceholder="جستجوی فرآیند..." csvFilename="monitoring-processes.csv" columns={[{ key: 'name', label: 'فرآیند', value: (r) => r.name }, { key: 'pid', label: 'PID', value: (r) => r.pid }, { key: 'cpu', label: 'CPU', value: (r) => r.cpu, render: (r) => `${r.cpu}٪`, aggregate: 'average' }, { key: 'memory', label: 'حافظه', value: (r) => r.memory, render: (r) => `${formatNumber(r.memory)} MB` }, { key: 'user', label: 'کاربر', value: (r) => r.user }, { key: 'status', label: 'وضعیت', value: (r) => r.status }, { key: 'action', label: 'عملیات', value: () => '', render: (r) => <Button size="small" color="error" onClick={() => { if (window.confirm(`پایان دادن به ${r.name} شبیه‌سازی شود؟`)) setProcesses((p) => p.map((x) => x.id === r.id ? { ...x, status: 'درخواست پایان ثبت شد' } : x)); }}>پایان فرآیند</Button> }]} /></Box>;
+  const networkView = <Grid container spacing={2}><Grid item xs={12} md={4}><Card><CardContent><Typography sx={{ fontWeight: 800 }}>وضعیت شبکه</Typography><Stack spacing={1} sx={{ mt: 1 }}><Typography>اتصال: <Chip size="small" color="success" label="برقرار" /></Typography><Typography>رابط: Ethernet 1</Typography><Typography>IP داخلی: ۱۰.۱۲.۱.۲۱</Typography><Typography>دانلود: ۸۵ مگابیت بر ثانیه</Typography><Typography>آپلود: ۲۱ مگابیت بر ثانیه</Typography><Typography>تأخیر: ۱۸ms • Packet loss: ۰٪</Typography></Stack></CardContent></Card></Grid><Grid item xs={12} md={8}><DataTable rows={networkSeed} getRowId={(r) => r.id} searchPlaceholder="جستجوی فرآیند یا آدرس..." csvFilename="monitoring-network.csv" columns={[{ key: 'process', label: 'فرآیند', value: (r) => r.process }, { key: 'local', label: 'آدرس محلی', value: (r) => r.local }, { key: 'remote', label: 'آدرس مقصد', value: (r) => r.remote }, { key: 'protocol', label: 'پروتکل', value: (r) => r.protocol }, { key: 'status', label: 'وضعیت', value: (r) => r.status }, { key: 'traffic', label: 'ترافیک', value: (r) => r.traffic }]} /></Grid></Grid>;
+  const grantsView = <Box><Stack direction="row" justifyContent="flex-end" sx={{ mb: 1.5 }}><Button variant="contained" startIcon={<Add />} onClick={() => setGrantDialog(true)}>ثبت دسترسی جدید</Button></Stack><DataTable rows={grants} getRowId={(r) => r.id} searchPlaceholder="جستجوی اپراتور، شخص یا دلیل..." csvFilename="monitoring-grants.csv" columns={[{ key: 'operator', label: 'اپراتور', value: (r) => personName(r.operatorId) }, { key: 'subject', label: 'شخص', value: (r) => personName(r.subjectId) }, { key: 'device', label: 'دستگاه', value: (r) => devices.find((d) => d.id === r.deviceId)?.name || 'همه دستگاه‌ها' }, { key: 'caps', label: 'قابلیت‌ها', value: (r) => r.capabilities.join('، ') }, { key: 'consent', label: 'رضایت', value: (r) => r.consentMode === 'attended' ? 'با رضایت' : 'مدیریت‌شده' }, { key: 'status', label: 'وضعیت', value: (r) => statusLabel[r.status], render: (r) => <Chip size="small" label={statusLabel[r.status]} color={r.status === 'active' ? 'success' : r.status === 'pending' ? 'warning' : 'default'} /> }, { key: 'reason', label: 'دلیل', value: (r) => r.reason }, { key: 'visibility', label: 'نمایش به مشتری', value: (r) => r.customerVisible ? 'بله' : 'خیر', render: (r) => <CustomerVisibilityBadge visible={r.customerVisible} /> }]} /></Box>;
+  const auditView = <DataTable rows={monitoringAudit} getRowId={(r) => r.id} searchPlaceholder="جستجوی رخداد، کاربر یا شناسه..." csvFilename="monitoring-audit.csv" columns={[{ key: 'event', label: 'رخداد', value: (r) => r.event }, { key: 'actor', label: 'کاربر', value: (r) => r.actorName }, { key: 'target', label: 'هدف', value: (r) => r.target }, { key: 'severity', label: 'سطح', value: (r) => r.severity }, { key: 'session', label: 'شناسه نشست', value: (r) => r.sessionId || '—' }, { key: 'time', label: 'زمان', value: (r) => r.timestamp, render: (r) => formatRelative(r.timestamp) }]} />;
+  const policyView = <Card><CardContent><Typography sx={{ fontWeight: 800, mb: 2 }}>سیاست‌های نمونه مانیتورینگ</Typography><Grid container spacing={2}><Grid item xs={12} md={4}><TextField fullWidth label="فاصله ثبت تصویر" value={policy.interval} onChange={(e) => setPolicy({ ...policy, interval: e.target.value })} /></Grid><Grid item xs={12} md={4}><TextField fullWidth label="کیفیت تصویر" value={policy.quality} onChange={(e) => setPolicy({ ...policy, quality: e.target.value })} /></Grid><Grid item xs={12} md={4}><TextField fullWidth label="مدت نگهداری" value={policy.retention} onChange={(e) => setPolicy({ ...policy, retention: e.target.value })} /></Grid><Grid item xs={12}><FormControlLabel control={<Switch checked={policy.blur} onChange={(e) => setPolicy({ ...policy, blur: e.target.checked })} />} label="Blur محلی برای اطلاعات حساس" /><FormControlLabel control={<Switch checked={policy.activeOnly} onChange={(e) => setPolicy({ ...policy, activeOnly: e.target.checked })} />} label="ثبت تصویر فقط هنگام فعالیت" /></Grid></Grid><Alert severity="info" sx={{ mt: 2 }}>این تنظیمات شبیه‌سازی شده‌اند و در Agent ویندوزی آینده اعمال خواهند شد.</Alert></CardContent></Card>;
+  const content: any = { overview, people: peopleView, devices: deviceView, sessions: sessionsView, screenshots: screenshotView, processes: processesView, network: networkView, grants: grantsView, audit: auditView, policies: policyView }[view] || overview;
+  return <Box><PageHeader title={`مانیتورینگ — ${views[view] || views.overview}`} subtitle="پایش شفاف، رضایت‌محور و قابل حسابرسی دستگاه‌ها و نشست‌های سازمانی" crumbs={['تری‌لیز', 'مانیتورینگ']} /><Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>{Object.entries(views).map(([key, label]) => <Button key={key} size="small" variant={view === key ? 'contained' : 'outlined'} onClick={() => go(key)}>{label}</Button>)}</Stack>{content}
+    <Dialog open={Boolean(person)} onClose={() => setPerson(null)} fullWidth maxWidth="md"><DialogTitle>جزئیات مانیتورینگ {person?.name}</DialogTitle><DialogContent dividers>{person && <Grid container spacing={2}><Grid item xs={12} md={5}><Card variant="outlined"><CardContent><Stack direction="row" spacing={1} alignItems="center"><Avatar>{person.name[0]}</Avatar><Box><Typography sx={{ fontWeight: 800 }}>{person.name}</Typography><Typography variant="body2" color="text.secondary">{person.title}</Typography></Box></Stack><Divider sx={{ my: 1.5 }} /><Typography>وضعیت: {person.status === 'online' ? 'آنلاین' : 'آفلاین'}</Typography><Typography>دستگاه: {person.deviceName}</Typography><Typography>پروژه: {person.project}</Typography><Typography>آخرین فعالیت: {person.lastSeen ? formatRelative(person.lastSeen) : '—'}</Typography></CardContent></Card></Grid><Grid item xs={12} md={7}><Typography sx={{ fontWeight: 800, mb: 1 }}>سوابق مرتبط</Typography><Stack spacing={1}>{localSessions.filter((s) => s.subjectId === person.id).map((s) => <Card key={s.id} variant="outlined"><CardContent sx={{ py: 1.2 }}><Typography>{s.id} — {statusLabel[s.status]}</Typography><Typography variant="caption">{s.reason || 'بدون توضیح'} • {projectName(s.projectId)}</Typography></CardContent></Card>)}{screenshots.filter((s) => s.employeeId === person.id).map((s) => <Card key={s.id} variant="outlined"><CardContent sx={{ py: 1.2 }}><Typography>{s.label}</Typography><Typography variant="caption">{formatRelative(s.capturedAt)} • {s.application}</Typography></CardContent></Card>)}</Stack></Grid></Grid>}</DialogContent><DialogActions><Button onClick={() => { const d = devices.find((x) => x.userId === person?.id); if (d) { setSession(localSessions.find((s) => s.deviceId === d.id) || null); setLiveState('idle'); setLiveOpen(true); } }}>مشاهده زنده</Button><Button onClick={() => setPerson(null)}>بستن</Button></DialogActions></Dialog>
+    <Dialog open={liveOpen} onClose={() => setLiveOpen(false)} fullWidth maxWidth="lg"><DialogTitle><Stack direction="row" justifyContent="space-between" alignItems="center"><span>مشاهده زنده — {liveDevice.name}</span><Chip icon={<Wifi />} label={liveState === 'active' ? 'اتصال برقرار' : liveState === 'pending' ? 'در انتظار تأیید' : liveState === 'ended' ? 'پایان یافته' : 'آماده درخواست'} color={liveState === 'active' ? 'success' : liveState === 'pending' ? 'warning' : 'default'} /></Stack></DialogTitle><DialogContent dividers><Grid container spacing={2}><Grid item xs={12} md={8}><Box sx={{ minHeight: 360, borderRadius: 2, p: 2, color: '#e2e8f0', background: 'linear-gradient(135deg,#0f172a,#1e3a5f)', border: '8px solid #334155' }}><Typography variant="caption" sx={{ opacity: .8 }}>Windows 11 • {liveUser} • شبیه‌سازی تصویر زنده</Typography><Box sx={{ mt: 7, display: 'grid', placeItems: 'center', textAlign: 'center' }}><MonitorHeart sx={{ fontSize: 70, opacity: .5 }} /><Typography sx={{ mt: 1 }}>نمایشگر دستگاه {liveDevice.name}</Typography><Typography variant="caption" sx={{ opacity: .7 }}>هیچ تصویر واقعی دریافت نمی‌شود؛ این نمای نمونه برای تست UX است.</Typography></Box></Box></Grid><Grid item xs={12} md={4}><Stack spacing={1.3}><Typography><b>کاربر:</b> {liveUser}</Typography><Typography><b>رزولوشن:</b> ۱۹۲۰×۱۰۸۰ • <b>FPS:</b> ۳۰</Typography><Typography><b>تأخیر:</b> ۱۸ms • <b>Bitrate:</b> ۴.۲Mbps</Typography><Typography><b>مدت نشست:</b> {session?.duration ? `${session.duration} دقیقه` : '—'}</Typography><Divider /><Button variant="contained" startIcon={<PlayArrow />} disabled={liveState === 'pending' || liveState === 'active'} onClick={() => requestSession(liveDevice)}>درخواست مشاهده</Button>{liveState === 'pending' && <Alert severity="warning">رضایت مقصد لازم است. پاسخ را در همین نمونه شبیه‌سازی کنید.</Alert>}{liveState === 'pending' && <Stack direction="row" spacing={1}><Button color="success" startIcon={<CheckCircle />} onClick={() => updateSession('active')}>تأیید رضایت</Button><Button color="error" onClick={() => updateSession('rejected')}>رد درخواست</Button></Stack>}{liveState === 'active' && <Button color="error" startIcon={<Stop />} onClick={() => updateSession('ended')}>توقف جلسه</Button>}<Stack direction="row" spacing={1}><Button size="small" startIcon={<CameraAlt />} onClick={() => setShot(screenshots.find((s) => s.deviceId === liveDevice.id) || screenshots[0])}>Screenshot</Button><Button size="small" startIcon={<Fullscreen />}>تمام‌صفحه</Button><Button size="small" startIcon={<Tune />}>کیفیت</Button></Stack></Stack></Grid></Grid></DialogContent><DialogActions><Button onClick={() => setLiveOpen(false)}>بستن</Button></DialogActions></Dialog>
+    <Dialog open={Boolean(shot)} onClose={() => setShot(null)} fullWidth maxWidth="md"><DialogTitle>{shot?.label}</DialogTitle><DialogContent dividers>{shot && <Grid container spacing={2}><Grid item xs={12} md={8}><Box sx={{ minHeight: 280, borderRadius: 2, background: shot.tone === 'blue' ? 'linear-gradient(135deg,#1e3a8a,#60a5fa)' : shot.tone === 'emerald' ? 'linear-gradient(135deg,#047857,#6ee7b7)' : shot.tone === 'amber' ? 'linear-gradient(135deg,#b45309,#fcd34d)' : 'linear-gradient(135deg,#334155,#94a3b8)' }} /></Grid><Grid item xs={12} md={4}><Typography>دستگاه: {shot.deviceName}</Typography><Typography>کارمند: {personName(shot.employeeId)}</Typography><Typography>برنامه: {shot.application || '—'}</Typography><Typography>پروژه: {projectName(shot.projectId)}</Typography><Typography>زمان: {formatRelative(shot.capturedAt)}</Typography><CustomerVisibilityBadge visible={shot.customerVisible} /></Grid></Grid>}</DialogContent><DialogActions><Button startIcon={<Download />} onClick={() => setShot(null)}>بستن پیش‌نمایش</Button></DialogActions></Dialog>
+    <Dialog open={grantDialog} onClose={() => setGrantDialog(false)} fullWidth maxWidth="sm"><DialogTitle>ثبت دسترسی مانیتورینگ</DialogTitle><DialogContent dividers><Stack spacing={2} sx={{ mt: 1 }}><FormControl fullWidth><InputLabel>شخص تحت پایش</InputLabel><Select label="شخص تحت پایش" value={subject} onChange={(e) => setSubject(e.target.value)}><MenuItem value="">انتخاب کنید</MenuItem>{users.map((u) => <MenuItem key={u.id} value={u.id}>{u.name} — {u.title}</MenuItem>)}</Select></FormControl><FormControl fullWidth><InputLabel>دستگاه</InputLabel><Select label="دستگاه" value={device} onChange={(e) => setDevice(e.target.value)}><MenuItem value="">همه دستگاه‌های شخص</MenuItem>{devices.filter((d) => !subject || d.userId === subject).map((d) => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}</Select></FormControl><FormControl fullWidth><InputLabel>قابلیت‌ها</InputLabel><Select multiple label="قابلیت‌ها" value={selectedCaps} onChange={(e) => setSelectedCaps(e.target.value)}>{caps.map((cap) => <MenuItem key={cap} value={cap}><Checkbox size="small" checked={selectedCaps.includes(cap)} />{cap}</MenuItem>)}</Select></FormControl><TextField label="دلیل و محدوده استفاده" fullWidth required multiline minRows={2} value={reason} onChange={(e) => setReason(e.target.value)} /><FormControlLabel control={<Checkbox defaultChecked={false} />} label="قابل مشاهده برای مشتری (برای داده‌های حساس توصیه نمی‌شود)" /></Stack></DialogContent><DialogActions><Button onClick={() => setGrantDialog(false)}>انصراف</Button><Button variant="contained" disabled={!subject || !reason} onClick={saveGrant}>ثبت دسترسی</Button></DialogActions></Dialog>
+  </Box>;
 }

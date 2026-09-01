@@ -4,8 +4,11 @@ import DashboardPage from './pages/DashboardPage.tsx';
 import ProjectsPage from './pages/ProjectsPage.tsx';
 import ProjectDetailPage from './pages/ProjectDetailPage.tsx';
 import TasksPage from './pages/TasksPage.tsx';
+import TaskDetailPage from './pages/TaskDetailPage.tsx';
 import CustomersPage from './pages/CustomersPage.tsx';
+import CustomerDetailPage from './pages/CustomerDetailPage.tsx';
 import TicketsPage from './pages/TicketsPage.tsx';
+import TicketDetailPage from './pages/TicketDetailPage.tsx';
 import MonitoringPage from './pages/MonitoringPage.tsx';
 import DevicesPage from './pages/DevicesPage.tsx';
 import UsersPage from './pages/UsersPage.tsx';
@@ -14,10 +17,11 @@ import ReportsPage from './pages/ReportsPage.tsx';
 import SettingsPage from './pages/SettingsPage.tsx';
 import { ContractsPage, InvoiceDetailPage, InvoicesPage, InstallmentsPage, LeadsPage, PaymentsPage, ProductsPage, ProposalDetailPage, ProposalsPage, SalesOverviewPage } from './pages/BusinessPages.tsx';
 import { ActivitiesPage, GoalsPage, ResalesPage, TimesheetsPage } from './pages/SupplementalPages.tsx';
-import { AnnouncementsPage, ExportsPage, KnowledgePage, MediaPage, NotificationPage, RemindersPage } from './pages/UtilityPages.tsx';
+import { AnnouncementsPage, ExportsPage, KnowledgePage, NotificationPage, RemindersPage } from './pages/UtilityPages.tsx';
 import { AttendancePage, DocumentsPage, EmployeeDetailPage, EmployeesPage, HRDashboardPage, LeavesPage, MissionsPage, PayrollPage, PerformanceDetailPage, PerformancePage, RecruitmentPage } from './pages/HRPages.tsx';
 import { BankAccountsPage, ExpensesPage, FinanceDashboardPage, FinanceReportsPage, HesabfaPage, ReceivablesPage, SuppliersPage } from './pages/FinancePages.tsx';
 import { ChatPage, DocumentsRepositoryPage, PerformancePointsPage, ProjectEventsPage, TaskLabelsPage } from './pages/AdvancedPages.tsx';
+import FileManagerPage from './pages/FileManagerPage.tsx';
 
 export default function App() {
   return (
@@ -42,8 +46,10 @@ export default function App() {
         <Route path="/projects/:id/events" element={<ProjectEventsPage />} />
         <Route path="/project-events" element={<ProjectEventsPage />} />
         <Route path="/tasks" element={<TasksPage />} />
+        <Route path="/tasks/:id" element={<TaskDetailPage />} />
         <Route path="/tasks/labels" element={<TaskLabelsPage />} />
         <Route path="/customers" element={<CustomersPage />} />
+        <Route path="/customers/:id" element={<CustomerDetailPage />} />
         <Route path="/leads" element={<LeadsPage />} />
         <Route path="/resales" element={<ResalesPage />} />
         <Route path="/sales" element={<SalesOverviewPage />} />
@@ -63,6 +69,7 @@ export default function App() {
         <Route path="/contracts" element={<ContractsPage />} />
         <Route path="/installments" element={<InstallmentsPage />} />
         <Route path="/tickets" element={<TicketsPage />} />
+        <Route path="/tickets/:id" element={<TicketDetailPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/goals" element={<GoalsPage />} />
         <Route path="/timesheets" element={<TimesheetsPage />} />
@@ -72,7 +79,7 @@ export default function App() {
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/monitoring" element={<MonitoringPage />} />
         <Route path="/activities" element={<ActivitiesPage />} />
-        <Route path="/media" element={<MediaPage />} />
+        <Route path="/media" element={<FileManagerPage />} />
         <Route path="/exports" element={<ExportsPage />} />
         <Route path="/announcements" element={<AnnouncementsPage />} />
         <Route path="/notifications" element={<NotificationPage />} />

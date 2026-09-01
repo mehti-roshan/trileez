@@ -1,5 +1,7 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
-import { currentUser, organizations } from '../mock/data.ts';
+import { organizations } from '../mock/data.ts';
+import { getCurrentUser } from '../services/session.ts';
 import type { Organization, User } from '../types/index.ts';
 
 interface AppContextValue {
@@ -17,7 +19,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value = useMemo(() => {
     const organization = organizations.find((item) => item.id === organizationId) ?? organizations[0];
     return {
-      user: currentUser,
+      user: getCurrentUser(),
       organization,
       organizations,
       setOrganizationId,

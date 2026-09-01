@@ -11,17 +11,21 @@ import {
   Toolbar,
   Typography,
 } from '@mui/material';
-import { useState } from 'react';
-import { notifications } from '../../mock/data.ts';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { formatRelative } from '../../utils/format.ts';
 import { useApp } from '../../context/AppContext.tsx';
 import UserAvatar from '../common/UserAvatar.tsx';
 import QuickCreateMenu from '../common/QuickCreateMenu.tsx';
+import { notificationRepository } from '../../services/repositories.ts';
 
 export default function Header({ onMenu }: { onMenu: () => void }) {
   const { user, organization, organizations, setOrganizationId } = useApp();
+  const navigate = useNavigate();
   const [orgAnchor, setOrgAnchor] = useState<null | HTMLElement>(null);
   const [noteAnchor, setNoteAnchor] = useState<null | HTMLElement>(null);
+  const [notifications, setNotifications] = useState(() => notificationRepository.list());
+  useEffect(() => notificationRepository.subscribe(setNotifications), []);
   const unread = notifications.filter((item) => !item.read).length;
 
   return (
@@ -105,8 +109,8 @@ export default function Header({ onMenu }: { onMenu: () => void }) {
         ))}
       </Menu>
       <Menu anchorEl={noteAnchor} open={Boolean(noteAnchor)} onClose={() => setNoteAnchor(null)} slotProps={{ paper: { sx: { width: 320 } } }}>
-        {notifications.map((item) => (
-          <MenuItem key={item.id} sx={{ whiteSpace: 'normal', alignItems: 'flex-start', py: 1.25 }}>
+        {notifications.slice(0, 6).map((item) => (
+          <MenuItem key={item.id} onClick={() => { notificationRepository.update(item.id, { read: true }); setNoteAnchor(null); if (item.conversationId) navigate(`/chat?conversation=${item.conversationId}`); else if (item.ticketId) navigate(`/tickets/${item.ticketId}`); else if (item.taskId) navigate(`/tasks/${item.taskId}`); else if (item.projectId) navigate(`/projects/${item.projectId}`); else navigate('/notifications'); }} sx={{ whiteSpace: 'normal', alignItems: 'flex-start', py: 1.25 }}>
             <Box>
               <Typography variant="body2" sx={{ fontWeight: item.read ? 500 : 700 }}>
                 {item.title}
@@ -120,6 +124,7 @@ export default function Header({ onMenu }: { onMenu: () => void }) {
             </Box>
           </MenuItem>
         ))}
+        <MenuItem onClick={() => { setNoteAnchor(null); navigate('/notifications'); }} sx={{ justifyContent: 'center', color: 'primary.main', fontWeight: 700 }}>مشاهده همه اعلان‌ها</MenuItem>
       </Menu>
     </AppBar>
   );

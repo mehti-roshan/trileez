@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import {
   AccountBalanceWalletOutlined,
   AssessmentOutlined,
@@ -24,6 +25,7 @@ import {
   ReceiptLongOutlined,
   RequestQuoteOutlined,
   SettingsOutlined,
+  SecurityOutlined,
   TimelineOutlined,
   TodayOutlined,
   WidgetsOutlined,
@@ -57,16 +59,17 @@ const groups: NavGroup[] = [
     { to: '/documents?section=finance', label: 'دبیرخانه مالی', icon: <DescriptionOutlined /> },
   ] },
   { key: 'work', label: 'مدیریت کار', icon: <AssignmentOutlined />, children: [{ to: '/projects', label: 'پروژه‌ها', icon: <FolderOutlined /> }, { to: '/documents?section=projects', label: 'دبیرخانه پروژه‌ها', icon: <DescriptionOutlined /> }, { to: '/project-events', label: 'رویدادهای پروژه', icon: <TimelineOutlined /> }, { to: '/tasks', label: 'وظایف', icon: <AssignmentOutlined /> }, { to: '/tasks/labels', label: 'لیبل‌های وظایف', icon: <WidgetsOutlined /> }, { to: '/calendar', label: 'تقویم', icon: <CalendarMonthOutlined /> }, { to: '/goals', label: 'اهداف', icon: <TimelineOutlined /> }, { to: '/timesheets', label: 'ثبت ساعات کاری', icon: <TodayOutlined /> }, { to: '/knowledge', label: 'پایگاه دانش', icon: <WidgetsOutlined /> }] },
-  { key: 'hr', label: 'منابع انسانی', icon: <BadgeOutlined />, children: [{ to: '/hr', label: 'نمای کلی', icon: <BadgeOutlined /> }, { to: '/hr/employees', label: 'کارکنان', icon: <GroupsOutlined /> }, { to: '/documents?section=hr', label: 'دبیرخانه منابع انسانی', icon: <DescriptionOutlined /> }, { to: '/hr/attendance', label: 'حضور و غیاب', icon: <TodayOutlined /> }, { to: '/hr/leaves', label: 'مرخصی‌ها', icon: <EventAvailableOutlined /> }, { to: '/hr/missions', label: 'ماموریت‌ها', icon: <WorkHistoryOutlined /> }, { to: '/hr/performance', label: 'ارزیابی عملکرد', icon: <AssessmentOutlined /> }, { to: '/hr/points', label: 'امتیاز عملکرد', icon: <TimelineOutlined /> }, { to: '/hr/documents', label: 'اسناد پرسنلی', icon: <DescriptionOutlined /> }, { to: '/hr/payroll', label: 'حقوق و مزایا', icon: <PaidOutlined /> }, { to: '/hr/recruitment', label: 'استخدام', icon: <BusinessCenterOutlined /> }] },
+  { key: 'hr', label: 'منابع انسانی', icon: <BadgeOutlined />, children: [{ to: '/hr', label: 'نمای کلی', icon: <BadgeOutlined /> }, { to: '/hr/employees', label: 'کارکنان', icon: <GroupsOutlined /> }, { to: '/documents?section=hr', label: 'دبیرخانه منابع انسانی', icon: <DescriptionOutlined /> }, { to: '/hr/attendance', label: 'حضور و غیاب', icon: <TodayOutlined /> }, { to: '/hr/leaves', label: 'مرخصی‌ها', icon: <EventAvailableOutlined /> }, { to: '/hr/missions', label: 'ماموریت‌ها', icon: <WorkHistoryOutlined /> }, { to: '/hr/performance', label: 'ارزیابی عملکرد', icon: <AssessmentOutlined /> }, { to: '/hr/documents', label: 'اسناد پرسنلی', icon: <DescriptionOutlined /> }, { to: '/hr/payroll', label: 'حقوق و مزایا', icon: <PaidOutlined /> }, { to: '/hr/recruitment', label: 'استخدام', icon: <BusinessCenterOutlined /> }] },
   { key: 'support', label: 'پشتیبانی', icon: <ConfirmationNumberOutlined />, children: [{ to: '/tickets', label: 'تیکت‌ها', icon: <ConfirmationNumberOutlined /> }] },
-  { key: 'monitoring', label: 'مانیتورینگ', icon: <MonitorHeartOutlined />, children: [{ to: '/users', label: 'افراد', icon: <GroupsOutlined /> }, { to: '/devices', label: 'دستگاه‌ها', icon: <DevicesOutlined /> }, { to: '/monitoring', label: 'وضعیت لحظه‌ای', icon: <MonitorHeartOutlined /> }, { to: '/activities', label: 'فعالیت‌ها', icon: <TimelineOutlined /> }, { to: '/monitoring?view=sessions', label: 'جلسات', icon: <ManageAccountsOutlined /> }] },
+  { key: 'monitoring', label: 'مانیتورینگ', icon: <MonitorHeartOutlined />, children: [{ to: '/monitoring?view=overview', label: 'نمای کلی', icon: <MonitorHeartOutlined /> }, { to: '/monitoring?view=people', label: 'افراد', icon: <GroupsOutlined /> }, { to: '/monitoring?view=devices', label: 'دستگاه‌ها', icon: <DevicesOutlined /> }, { to: '/monitoring?view=sessions', label: 'جلسات', icon: <ManageAccountsOutlined /> }, { to: '/monitoring?view=screenshots', label: 'تصاویر صفحه', icon: <DescriptionOutlined /> }, { to: '/monitoring?view=processes', label: 'فرآیندها', icon: <MonitorHeartOutlined /> }, { to: '/monitoring?view=network', label: 'شبکه', icon: <MonitorHeartOutlined /> }, { to: '/monitoring?view=grants', label: 'مجوزهای مانیتورینگ', icon: <SecurityOutlined /> }, { to: '/monitoring?view=audit', label: 'رویدادها و Audit', icon: <TimelineOutlined /> }, { to: '/monitoring?view=policies', label: 'سیاست‌ها', icon: <SecurityOutlined /> }, { to: '/activities', label: 'فعالیت‌های سامانه', icon: <TimelineOutlined /> }] },
   { key: 'reports', label: 'گزارش‌ها', icon: <AssessmentOutlined />, children: [{ to: '/reports?view=sales', label: 'فروش', icon: <AssessmentOutlined /> }, { to: '/reports?view=profit', label: 'هزینه‌ها در مقایسه با درآمد', icon: <AssessmentOutlined /> }, { to: '/reports?view=leads', label: 'مشتریان احتمالی', icon: <AssessmentOutlined /> }, { to: '/reports?view=timesheets', label: 'ثبت ساعات کاری', icon: <AssessmentOutlined /> }, { to: '/reports?view=knowledge', label: 'مقالات پایگاه دانش', icon: <AssessmentOutlined /> }, { to: '/reports?view=contacts', label: 'گزارش تماس‌ها', icon: <AssessmentOutlined /> }] },
-  { key: 'tools', label: 'ابزارها', icon: <WidgetsOutlined />, children: [{ to: '/media', label: 'رسانه', icon: <WidgetsOutlined /> }, { to: '/documents', label: 'دبیرخانه و اسناد', icon: <DescriptionOutlined /> }, { to: '/exports', label: 'برون‌بری گروهی PDF', icon: <WidgetsOutlined /> }, { to: '/announcements', label: 'اطلاعیه‌ها', icon: <NotificationsNoneOutlined /> }] },
+  { key: 'tools', label: 'ابزارها', icon: <WidgetsOutlined />, children: [{ to: '/media', label: 'رسانه', icon: <WidgetsOutlined /> }, { to: '/documents?view=menu', label: 'دبیرخانه و اسناد', icon: <DescriptionOutlined />, children: [{ to: '/documents', label: 'همه اسناد', icon: <DescriptionOutlined /> }, { to: '/documents?view=internal', label: 'اسناد داخلی', icon: <DescriptionOutlined /> }, { to: '/documents?view=followup', label: 'پیگیری اسناد', icon: <TimelineOutlined /> }, { to: '/documents?view=archive', label: 'آرشیو اسناد', icon: <DescriptionOutlined /> }, { to: '/documents?view=groups', label: 'گروه‌بندی اسناد', icon: <WidgetsOutlined /> }] }, { to: '/exports', label: 'برون‌بری گروهی PDF', icon: <WidgetsOutlined /> }, { to: '/announcements', label: 'اطلاعیه‌ها', icon: <NotificationsNoneOutlined /> }] },
 ];
 
 function routeMatches(target: string, pathname: string, search: string) {
   const [targetPath, targetQuery = ''] = target.split('?');
-  if (targetPath !== pathname) return false;
+  const isNestedPath = targetPath !== '/' && pathname.startsWith(`${targetPath}/`);
+  if (targetPath !== pathname && !isNestedPath) return false;
   const targetParams = new URLSearchParams(targetQuery);
   const currentParams = new URLSearchParams(search);
   if (targetParams.size === 0) return currentParams.size === 0;

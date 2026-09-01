@@ -1,6 +1,6 @@
 import type { User } from '../types/index.ts';
 
-export type ResourceKind = 'project' | 'customer' | 'file' | 'conversation' | 'employee';
+export type ResourceKind = 'project' | 'customer' | 'file' | 'conversation' | 'employee' | 'monitoring';
 export type ResourceAccess = 'view' | 'edit' | 'delete' | 'share';
 
 export function canAccessResource(user: User, resource: { ownerId?: string; memberIds?: string[]; visibility?: 'private' | 'workspace' }, access: ResourceAccess = 'view', kind: ResourceKind = 'project') {
@@ -12,3 +12,10 @@ export function canAccessResource(user: User, resource: { ownerId?: string; memb
 }
 
 export const permission = { canAccessResource };
+
+export const monitoringPermissions = {
+  view: (user: User) => user.role === 'admin' || user.role === 'manager',
+  manageGrants: (user: User) => user.role === 'admin' || user.role === 'manager',
+  startSession: (user: User) => user.role === 'admin' || user.role === 'manager',
+  audit: (user: User) => user.role === 'admin' || user.role === 'manager',
+};

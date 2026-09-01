@@ -1,169 +1,98 @@
-import { Box, Button, Card, CardContent, Chip, LinearProgress, Stack, Tab, Tabs, Typography } from '@mui/material';
-import { ChatBubbleOutlined } from '@mui/icons-material';
-import { useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+/* eslint-disable react-hooks/purity, react-hooks/rules-of-hooks */
+import { Add, ChatBubbleOutlined, Stop } from '@mui/icons-material';
+import { Alert, Box, Button, Card, CardContent, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, LinearProgress, Stack, Tab, Tabs, TextField, Typography } from '@mui/material';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import DataTable from '../components/common/DataTable.tsx';
 import PageHeader from '../components/common/PageHeader.tsx';
-import { ProjectStatusChip } from '../components/common/StatusChip.tsx';
 import TaskCard from '../components/common/TaskCard.tsx';
+import { PriorityChip, ProjectStatusChip, TaskStatusChip } from '../components/common/StatusChip.tsx';
 import UserAvatar from '../components/common/UserAvatar.tsx';
-import { activities, customers, expenses, invoices, payments, projectEvents, projectMembers, projects, tasks, timesheets, users } from '../mock/data.ts';
-import type { TaskStatus } from '../types/index.ts';
-import { formatCurrency, formatDate, formatNumber, formatRelative, taskStatusLabel } from '../utils/format.ts';
+import CustomerVisibilityBadge from '../components/common/CustomerVisibilityBadge.tsx';
+import { activities, businessDocuments, contracts, customers, invoices, payments, projectEvents, projectMembers, projectNotes, projectPhases, projectSales, projects, tasks, tickets, users } from '../mock/data.ts';
+import { projectPhaseRepository, taskRepository, timesheetRepository, ticketRepository } from '../services/repositories.ts';
+import type { ProjectPhase, TaskStatus } from '../types/index.ts';
+import { formatCurrency, formatDate, formatNumber, formatRelative, priorityLabel, taskStatusLabel } from '../utils/format.ts';
 
-const columns: TaskStatus[] = ['todo', 'in_progress', 'review', 'done'];
+const keys = ['overview', 'tasks', 'timesheets', 'phases', 'files', 'chat', 'gantt', 'tickets', 'contracts', 'sales', 'notes'];
+const labels = ['بررسی اجمالی', 'وظایف', 'برگه‌های ثبت ساعات', 'فازها', 'فایل و اسناد', 'گفتگوها', 'گانت چارت', 'تیکت‌ها', 'قراردادها', 'فروش‌ها', 'یادداشت‌ها'];
+const statuses: TaskStatus[] = ['todo', 'in_progress', 'review', 'done'];
 
 export default function ProjectDetailPage() {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const [tab, setTab] = useState(0);
+  const { id } = useParams(); const navigate = useNavigate(); const [query, setQuery] = useSearchParams();
   const project = projects.find((item) => item.id === id);
-  const projectTasks = useMemo(() => tasks.filter((task) => task.projectId === project?.id), [project?.id]);
-  const members = users.filter((user) => project?.members.includes(user.id));
-  const financial = project ? {
-    invoiced: invoices.filter((item) => item.projectId === project.id).reduce((sum, item) => sum + item.amount, 0),
-    received: payments.filter((item) => item.projectId === project.id && item.status === 'تایید شده').reduce((sum, item) => sum + item.amount, 0),
-    costs: expenses.filter((item) => item.projectId === project.id).reduce((sum, item) => sum + item.amount, 0),
-  } : { invoiced: 0, received: 0, costs: 0 };
-  const memberRows = projectMembers.filter((member) => member.projectId === project?.id);
-  const projectHours = timesheets.filter((entry) => entry.projectId === project?.id).reduce((sum, entry) => sum + entry.hours, 0);
-  const laborCost = timesheets.filter((entry) => entry.projectId === project?.id).reduce((sum, entry) => sum + (entry.calculatedCost ?? entry.hours * (entry.hourlyRate ?? 200_000)), 0);
-
-  if (!project) {
-    return (
-      <Box>
-        <PageHeader title="پروژه یافت نشد" crumbs={['تری‌لیز', 'پروژه‌ها']} />
-      </Box>
-    );
-  }
-
-  return (
-    <Box>
-      <PageHeader
-        title={project.name}
-        subtitle={`${project.description} • مشتری: ${customers.find((customer) => customer.id === project.customerId)?.company ?? '—'}`}
-        crumbs={['تری‌لیز', 'پروژه‌ها', project.name]}
-        actions={<Button variant="outlined" startIcon={<ChatBubbleOutlined />} onClick={() => navigate(`/chat?project=${project.id}`)}>گفتگوی پروژه</Button>}
-      />
-      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 3 }}>
-        <Card sx={{ flex: 1 }}>
-          <CardContent>
-            <Stack direction="row" sx={{ justifyContent: 'space-between',  mb: 2 }}>
-              <ProjectStatusChip value={project.status} />
-              <Typography variant="caption">پایان: {formatDate(project.endDate)}</Typography>
-            </Stack>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              پیشرفت کلی
-            </Typography>
-            <LinearProgress variant="determinate" value={project.progress} sx={{ height: 10, borderRadius: 99, mb: 1 }} />
-            <Typography variant="caption">{formatNumber(project.progress)}٪ تکمیل شده</Typography>
-            <Typography variant="body2" sx={{ mt: 1.5 }}>مشتری: <strong>{customers.find((customer) => customer.id === project.customerId)?.company ?? '—'}</strong></Typography>
-            <Typography variant="body2">مدیر پروژه: <strong>{users.find((user) => user.id === project.managerId)?.name ?? '—'}</strong></Typography>
-            <Typography variant="body2">بازه: {formatDate(project.startDate)} تا {formatDate(project.endDate)}</Typography>
-            <Typography variant="body2">بودجه: <strong>{new Intl.NumberFormat('fa-IR').format(project.budget)} تومان</strong></Typography>
-          </CardContent>
-        </Card>
-        <Card sx={{ flex: 1 }}>
-          <CardContent>
-            <Typography sx={{ fontWeight: 700, mb: 1.5 }}>اعضا</Typography>
-            <Stack spacing={1.25}>
-              {members.map((member) => {
-                const membership = memberRows.find((item) => item.personId === member.id);
-                return (
-                <Stack key={member.id} direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
-                  <UserAvatar user={member} size={32} />
-                  <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      {member.name} <Typography component="span" variant="caption" color="text.secondary">{membership?.role ?? 'عضو پروژه'}</Typography>
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {member.title}
-                    </Typography>
-                  </Box>
-                </Stack>
-                );
-              })}
-            </Stack>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>هزینه نیروی انسانی: {formatCurrency(laborCost)} • {projectHours} ساعت ثبت‌شده</Typography>
-          </CardContent>
-        </Card>
-      </Stack>
-
-      <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ mb: 2 }}>
-        <Tab label="بورد کارها" />
-        <Tab label="فعالیت" />
-        <Tab label="خلاصه مالی" />
-        <Tab label="رویدادها" />
-      </Tabs>
-
-      {tab === 0 ? (
-        <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' } }}>
-          {columns.map((status) => (
-            <Box key={status} sx={{ bgcolor: '#F1F5F9', borderRadius: 2, p: 1.5, minHeight: 240 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
-                {taskStatusLabel[status]}
-              </Typography>
-              <Stack spacing={1.25}>
-                {projectTasks
-                  .filter((task) => task.status === status)
-                  .map((task) => (
-                    <TaskCard key={task.id} task={task} onClick={() => navigate('/tasks')} />
-                  ))}
-              </Stack>
-            </Box>
-          ))}
-        </Box>
-      ) : tab === 1 ? (
-        <Card>
-          <CardContent>
-            <Stack spacing={2}>
-              {activities
-                .filter((activity) => activity.entityId === project.id || projectTasks.some((task) => task.id === activity.entityId))
-                .map((activity) => (
-                  <Box key={activity.id}>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      {activity.userName}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {activity.description}
-                    </Typography>
-                    <Typography variant="caption">{formatRelative(activity.createdAt)}</Typography>
-                  </Box>
-                ))}
-            </Stack>
-          </CardContent>
-        </Card>
-      ) : tab === 2 ? (
-        <Card>
-          <CardContent>
-            <Typography sx={{ fontWeight: 800, mb: 2 }}>خلاصه مالی پروژه</Typography>
-            <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(5, 1fr)' } }}>
-              {[
-                ['ارزش قرارداد', project.budget],
-                ['فاکتور شده', financial.invoiced],
-                ['دریافت شده', financial.received],
-                ['هزینه پروژه', financial.costs],
-                ['سود تقریبی', financial.invoiced - financial.costs],
-              ].map(([label, value]) => <Box key={String(label)} sx={{ p: 1.5, bgcolor: '#F8FAFC', borderRadius: 2 }}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography sx={{ fontWeight: 800, mt: .5 }}>{formatCurrency(Number(value))}</Typography></Box>)}
-            </Box>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>مشتری: {customers.find((customer) => customer.id === project.customerId)?.company ?? '—'} • مانده دریافت: {formatCurrency(financial.invoiced - financial.received)}</Typography>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardContent>
-            <Typography sx={{ fontWeight: 800, mb: 1.5 }}>تایم‌لاین رویدادهای پروژه</Typography>
-            <Stack spacing={1.5}>
-              {projectEvents.filter((event) => event.projectId === project.id).map((event) => (
-                <Box key={event.id} sx={{ p: 1.5, borderRight: '3px solid', borderColor: event.status === 'completed' ? 'success.main' : 'warning.main', bgcolor: '#F8FAFC' }}>
-                  <Stack direction="row" sx={{ justifyContent: 'space-between' }}><Typography sx={{ fontWeight: 700 }}>{event.eventType}</Typography><Chip size="small" label={event.stage} /></Stack>
-                  <Typography variant="caption" color="text.secondary">{formatDate(event.date)} • ثبت‌کننده: {event.registeredBy}</Typography>
-                  <Typography variant="body2" sx={{ mt: .5 }}>{event.description}</Typography>
-                </Box>
-              ))}
-            </Stack>
-          </CardContent>
-        </Card>
-      )}
-    </Box>
-  );
+  const selected = keys.includes(query.get('view') ?? '') ? query.get('view')! : 'overview';
+  const [rows, setRows] = useState(() => tasks.filter((task) => task.projectId === id));
+  const [phases, setPhases] = useState(() => projectPhases.filter((phase) => phase.projectId === id));
+  const [projectTimes, setProjectTimes] = useState(() => timesheetRepository.list().filter((item) => item.projectId === id));
+  const [projectTickets, setProjectTickets] = useState(() => ticketRepository.list().filter((item) => item.projectId === id));
+  const [phaseOpen, setPhaseOpen] = useState(false); const [editingPhase, setEditingPhase] = useState<ProjectPhase | null>(null);
+  const [phaseForm, setPhaseForm] = useState({ title: '', status: 'planned' as ProjectPhase['status'], startDate: '', endDate: '', progress: '0', description: '', customerVisible: false });
+  const [dragged, setDragged] = useState<string | null>(null); const [timer, setTimer] = useState<string | null>(null); const [elapsed, setElapsed] = useState(0);
+  const [ganttDrag, setGanttDrag] = useState<{ taskId: string; mode: 'move' | 'start' | 'end'; originX: number; start: number; end: number } | null>(null);
+  const ganttRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!timer) return;
+    const interval = window.setInterval(() => setElapsed((value) => value + 1), 1000);
+    return () => window.clearInterval(interval);
+  }, [timer]);
+  useEffect(() => taskRepository.subscribe((items) => setRows(items.filter((task) => task.projectId === id))), [id]);
+  useEffect(() => timesheetRepository.subscribe((items) => setProjectTimes(items.filter((item) => item.projectId === id))), [id]);
+  useEffect(() => ticketRepository.subscribe((items) => setProjectTickets(items.filter((item) => item.projectId === id))), [id]);
+  if (!project) return <Box><PageHeader title="پروژه یافت نشد" crumbs={['تری‌لیز', 'پروژه‌ها']} /></Box>;
+  const customer = customers.find((item) => item.id === project.customerId);
+  const members = users.filter((user) => project.members.includes(user.id));
+  const memberRows = projectMembers.filter((item) => item.projectId === project.id);
+  const hours = projectTimes.reduce((sum, item) => sum + item.hours, 0);
+  const labor = projectTimes.reduce((sum, item) => sum + (item.calculatedCost ?? item.hours * (item.hourlyRate ?? 200000)), 0);
+  const gotoTab = (index: number) => { const next = new URLSearchParams(query); next.set('view', keys[index]); setQuery(next); };
+  const moveTask = (taskId: string, status: TaskStatus) => { const updated = taskRepository.update(taskId, { status, updatedAt: new Date().toISOString() }); if (updated) setRows((current) => current.map((task) => task.id === taskId ? updated : task)); };
+  const openPhase = (phase?: ProjectPhase) => { setEditingPhase(phase ?? null); setPhaseForm(phase ? { title: phase.title, status: phase.status, startDate: phase.startDate, endDate: phase.endDate, progress: String(phase.progress), description: phase.description, customerVisible: Boolean(phase.customerVisible) } : { title: '', status: 'planned', startDate: project.startDate, endDate: project.endDate, progress: '0', description: '', customerVisible: false }); setPhaseOpen(true); };
+  const savePhase = () => {
+    if (!phaseForm.title.trim() || !phaseForm.startDate || !phaseForm.endDate || phaseForm.endDate < phaseForm.startDate) return;
+    const value: ProjectPhase = { id: editingPhase?.id ?? `phase-${Date.now()}`, projectId: project.id, title: phaseForm.title.trim(), status: phaseForm.status, startDate: phaseForm.startDate, endDate: phaseForm.endDate, progress: Math.max(0, Math.min(100, Number(phaseForm.progress) || 0)), managerId: project.managerId, description: phaseForm.description.trim(), customerVisible: phaseForm.customerVisible };
+    if (editingPhase) projectPhaseRepository.update(value.id, value);
+    else projectPhaseRepository.create(value);
+    setPhases((current) => editingPhase ? current.map((item) => item.id === value.id ? value : item) : [value, ...current]);
+    setPhaseOpen(false);
+  };
+  const ganttTasks = rows.filter((task) => task.dueDate).map((task) => ({ task, start: new Date(task.startDate ?? task.createdAt).getTime(), end: new Date(task.dueDate).getTime() }));
+  const ganttMin = ganttTasks.length ? Math.min(...ganttTasks.map((item) => item.start)) : Date.now();
+  const ganttMax = ganttTasks.length ? Math.max(...ganttTasks.map((item) => item.end)) : ganttMin + 7 * 86400000;
+  const dayMs = 86400000; const timelineStart = new Date(ganttMin - 2 * dayMs); timelineStart.setHours(0, 0, 0, 0); const totalDays = Math.max(7, Math.ceil((ganttMax - timelineStart.getTime()) / dayMs) + 3);
+  useEffect(() => {
+    if (!ganttDrag) return;
+    const move = (event: PointerEvent) => {
+      const width = ganttRef.current?.clientWidth ?? 900; const deltaDays = Math.round((event.clientX - ganttDrag.originX) / Math.max(1, width / totalDays));
+      let start = ganttDrag.start; let end = ganttDrag.end;
+      if (ganttDrag.mode === 'move') { start += deltaDays * dayMs; end += deltaDays * dayMs; }
+      if (ganttDrag.mode === 'start') start = Math.min(end - dayMs, start + deltaDays * dayMs);
+      if (ganttDrag.mode === 'end') end = Math.max(start + dayMs, end + deltaDays * dayMs);
+      const next = { startDate: new Date(start).toISOString(), dueDate: new Date(end).toISOString(), updatedAt: new Date().toISOString() };
+      setRows((current) => current.map((item) => item.id === ganttDrag.taskId ? { ...item, ...next } : item));
+    };
+    const up = () => { const task = rows.find((item) => item.id === ganttDrag.taskId); if (task) { const updated = { ...task }; taskRepository.update(task.id, { startDate: updated.startDate, dueDate: updated.dueDate, updatedAt: updated.updatedAt }); } setGanttDrag(null); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+  }, [ganttDrag, rows, totalDays]);
+  const renderOverview = () => <Stack spacing={2}>
+    <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' } }}>{[['وظایف', rows.length], ['تکمیل‌شده', rows.filter((task) => task.status === 'done').length], ['ساعات ثبت‌شده', hours], ['تیکت‌های باز', tickets.filter((ticket) => ticket.projectId === project.id && ticket.status !== 'closed').length]].map(([title, value]) => <Card key={String(title)}><CardContent><Typography variant="caption" color="text.secondary">{title}</Typography><Typography variant="h5" sx={{ fontWeight: 800 }}>{formatNumber(Number(value))}</Typography></CardContent></Card>)}</Box>
+    <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}><Card sx={{ flex: 1 }}><CardContent><Stack direction="row" sx={{ justifyContent: 'space-between' }}><ProjectStatusChip value={project.status} /><Typography variant="caption">پایان: {formatDate(project.endDate)}</Typography></Stack><Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>پیشرفت کلی</Typography><LinearProgress variant="determinate" value={project.progress} sx={{ my: 1, height: 9, borderRadius: 5 }} /><Typography variant="body2">مشتری: <strong>{customer?.code ? `${customer.code} — ` : ''}{customer?.company}</strong></Typography><Typography variant="body2">مدیر پروژه: <strong>{users.find((user) => user.id === project.managerId)?.name}</strong></Typography><Typography variant="body2">بودجه: <strong>{formatCurrency(project.budget)}</strong></Typography></CardContent></Card><Card sx={{ flex: 1 }}><CardContent><Typography sx={{ fontWeight: 700, mb: 1 }}>اعضای پروژه</Typography>{members.map((member) => <Stack key={member.id} direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1 }}><UserAvatar user={member} size={30} /><Typography variant="body2">{member.name} <Typography component="span" variant="caption" color="text.secondary">{memberRows.find((item) => item.personId === member.id)?.role}</Typography></Typography></Stack>)}<Typography variant="caption" color="text.secondary">هزینه نیروی انسانی: {formatCurrency(labor)} • {hours} ساعت</Typography></CardContent></Card></Stack>
+    <Card><CardContent><Typography sx={{ fontWeight: 700, mb: 1 }}>فعالیت‌های اخیر</Typography>{activities.filter((activity) => activity.entityId === project.id || rows.some((task) => task.id === activity.entityId)).slice(0, 6).map((activity) => <Box key={activity.id} sx={{ borderRight: '3px solid #2563EB', pr: 1, mb: 1 }}><Typography variant="body2">{activity.userName} — {activity.description}</Typography><Typography variant="caption">{formatRelative(activity.createdAt)}</Typography></Box>)}</CardContent></Card>
+    <Card><CardContent><Typography sx={{ fontWeight: 700, mb: 1.5 }}>خلاصه مالی پروژه</Typography><Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' } }}>{[['ارزش قرارداد', project.budget], ['فاکتور شده', invoices.filter((item) => item.projectId === project.id).reduce((sum, item) => sum + item.amount, 0)], ['دریافت شده', payments.filter((item) => item.projectId === project.id && item.status === 'تایید شده').reduce((sum, item) => sum + item.amount, 0)], ['هزینه نیروی انسانی', labor]].map(([label, value]) => <Box key={String(label)}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography sx={{ fontWeight: 800 }}>{formatCurrency(Number(value))}</Typography></Box>)}</Box></CardContent></Card>
+  </Stack>;
+  const renderTasks = () => <Stack spacing={2}><Button variant="contained" startIcon={<Add />} sx={{ alignSelf: 'flex-start' }} onClick={() => navigate(`/tasks?create=1&project=${project.id}`)}>وظیفه جدید</Button><Card><CardContent><Typography sx={{ fontWeight: 700, mb: 1.5 }}>بورد کارها</Typography><Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2,1fr)', lg: 'repeat(4,1fr)' } }}>{statuses.map((status) => <Box key={status} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (dragged) moveTask(dragged, status); setDragged(null); }} sx={{ bgcolor: '#F1F5F9', borderRadius: 2, p: 1.5, minHeight: 180 }}><Typography variant="subtitle2">{taskStatusLabel[status]}</Typography><Stack spacing={1}>{rows.filter((task) => task.status === status).map((task) => <Box key={task.id} draggable onDragStart={() => setDragged(task.id)}><TaskCard task={task} onClick={() => navigate('/tasks')} /><Button size="small" onClick={() => { if (timer === task.id) setTimer(null); else { setElapsed(0); setTimer(task.id); } }}>{timer === task.id ? 'توقف تایمر' : 'شروع تایمر'}</Button></Box>)}</Stack></Box>)}</Box></CardContent></Card><DataTable rows={rows} getRowId={(task) => task.id} searchPlaceholder="جستجوی وظیفه، مسئول یا برچسب..." filters={[{ key: 'customerVisible', label: 'نمایش به مشتری', options: [{ value: 'visible', label: 'قابل مشاهده برای مشتری' }, { value: 'internal', label: 'داخلی' }], value: (task) => task.customerVisible ? 'visible' : 'internal' }]} columns={[{ key: 'title', label: 'عنوان', value: (task) => task.title }, { key: 'assignee', label: 'مسئول', value: (task) => users.find((user) => user.id === task.assigneeId)?.name }, { key: 'status', label: 'وضعیت', value: (task) => taskStatusLabel[task.status], render: (task) => <TaskStatusChip value={task.status} /> }, { key: 'priority', label: 'اولویت', value: (task) => priorityLabel[task.priority], render: (task) => <PriorityChip value={task.priority} /> }, { key: 'estimated', label: 'ساعت تخمینی', value: (task) => task.estimatedHours ?? 0, aggregate: 'sum' }, { key: 'logged', label: 'ثبت‌شده', value: (task) => task.loggedHours ?? projectTimes.filter((item) => item.taskId === task.id).reduce((sum, item) => sum + item.hours, 0), aggregate: 'sum' }, { key: 'visible', label: 'نمایش مشتری', value: (task) => task.customerVisible ? 'قابل مشاهده برای مشتری' : 'داخلی', render: (task) => <CustomerVisibilityBadge visible={task.customerVisible} /> }]} /></Stack>;
+  const renderTimes = () => <DataTable rows={projectTimes} getRowId={(row) => row.id} searchPlaceholder="جستجوی کاربر یا وظیفه..." columns={[{ key: 'employee', label: 'کاربر', value: (row) => users.find((user) => user.id === row.employeeId)?.name }, { key: 'task', label: 'وظیفه', value: (row) => rows.find((task) => task.id === row.taskId)?.title }, { key: 'date', label: 'تاریخ', value: (row) => row.date }, { key: 'hours', label: 'مدت', value: (row) => row.hours, aggregate: 'sum' }, { key: 'cost', label: 'هزینه', value: (row) => row.calculatedCost ?? 0, aggregate: 'sum', render: (row) => formatCurrency(row.calculatedCost ?? 0) }, { key: 'status', label: 'وضعیت', value: (row) => row.status }, { key: 'visible', label: 'قابل مشاهده برای مشتری', value: (row) => row.customerVisible ? 'بله' : 'خیر', render: (row) => <Checkbox checked={Boolean(row.customerVisible)} disabled /> }]} />;
+  const renderPhases = () => <Stack spacing={2}><Button variant="contained" startIcon={<Add />} onClick={() => openPhase()} sx={{ alignSelf: 'flex-start' }}>فاز جدید</Button><DataTable rows={phases} getRowId={(row) => row.id} onRowClick={openPhase} searchPlaceholder="جستجوی فاز..." columns={[{ key: 'title', label: 'عنوان', value: (row) => row.title }, { key: 'status', label: 'وضعیت', value: (row) => row.status }, { key: 'dates', label: 'بازه', value: (row) => `${row.startDate} تا ${row.endDate}` }, { key: 'progress', label: 'پیشرفت', value: (row) => row.progress, aggregate: 'average', render: (row) => <Box sx={{ minWidth: 110 }}><LinearProgress variant="determinate" value={row.progress} /><Typography variant="caption">{row.progress}٪</Typography></Box> }, { key: 'manager', label: 'مسئول', value: (row) => users.find((user) => user.id === row.managerId)?.name }, { key: 'visibility', label: 'نمایش به مشتری', value: (row) => row.customerVisible ? 'قابل مشاهده برای مشتری' : 'داخلی', render: (row) => <CustomerVisibilityBadge visible={row.customerVisible} /> }]} /></Stack>;
+  const renderSimple = (kind: string) => {
+    if (kind === 'files') return <><Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}><Alert severity="info" sx={{ flex: 1 }}>هر سند به‌صورت مستقل وضعیت نمایش برای مشتری دارد؛ داخلی‌ها در پیش‌نمایش مشتری حذف می‌شوند.</Alert><Button variant="contained" sx={{ mr: 1 }} onClick={() => navigate(`/media?project=${project.id}`)}>مدیریت فایل‌های پروژه</Button></Stack><DataTable rows={businessDocuments.filter((doc) => doc.projectId === project.id)} getRowId={(row) => row.id} searchPlaceholder="جستجوی سند..." columns={[{ key: 'title', label: 'عنوان', value: (row) => row.title }, { key: 'number', label: 'شماره سند', value: (row) => row.documentNumber }, { key: 'date', label: 'تاریخ', value: (row) => row.createdAt }, { key: 'status', label: 'وضعیت', value: (row) => row.status }, { key: 'visibility', label: 'نمایش به مشتری', value: (row) => row.customerVisible ? 'قابل مشاهده برای مشتری' : 'داخلی', render: (row) => <CustomerVisibilityBadge visible={row.customerVisible} /> }, { key: 'files', label: 'پیوست', value: (row) => row.attachments.length, render: (row) => `${row.attachments.length} فایل` }]} /></>;
+    if (kind === 'chat') return <Card><CardContent><Typography sx={{ fontWeight: 700 }}>گفتگوی پروژه {project.name}</Typography><Typography variant="body2" color="text.secondary">اعضا: {members.map((member) => member.name).join('، ')}</Typography><Button sx={{ mt: 2 }} variant="contained" startIcon={<ChatBubbleOutlined />} onClick={() => navigate(`/chat?project=${project.id}`)}>باز کردن گفتگو</Button></CardContent></Card>;
+    if (kind === 'tickets') return <Stack spacing={2}><Button variant="contained" startIcon={<Add />} sx={{ alignSelf: 'flex-start' }} onClick={() => navigate(`/tickets?create=1&project=${project.id}`)}>تیکت جدید</Button><DataTable rows={projectTickets} getRowId={(row) => row.id} onRowClick={(row) => navigate(`/tickets/${row.id}`)} searchPlaceholder="جستجوی تیکت..." columns={[{ key: 'title', label: 'موضوع', value: (row) => row.title }, { key: 'status', label: 'وضعیت', value: (row) => row.status }, { key: 'priority', label: 'اولویت', value: (row) => row.priority }, { key: 'assignee', label: 'مسئول', value: (row) => users.find((user) => user.id === row.assigneeId)?.name }, { key: 'visible', label: 'قابل مشاهده برای مشتری', value: (row) => row.customerVisible ? 'بله' : 'خیر' }]} /></Stack>;
+    if (kind === 'contracts') return <DataTable rows={contracts.filter((item) => item.projectId === project.id)} getRowId={(row) => row.id} searchPlaceholder="جستجوی قرارداد..." columns={[{ key: 'title', label: 'موضوع', value: (row) => row.title }, { key: 'customer', label: 'مشتری', value: () => customer?.company }, { key: 'amount', label: 'ارزش', value: (row) => row.amount, aggregate: 'sum', render: (row) => formatCurrency(row.amount) }, { key: 'start', label: 'شروع', value: (row) => row.startDate }, { key: 'end', label: 'خاتمه', value: (row) => row.endDate }, { key: 'status', label: 'وضعیت', value: (row) => row.status }, { key: 'visibility', label: 'نمایش به مشتری', value: (row) => row.customerVisible ? 'قابل مشاهده برای مشتری' : 'داخلی', render: (row) => <CustomerVisibilityBadge visible={row.customerVisible} /> }]} />;
+    if (kind === 'sales') return <DataTable rows={projectSales.filter((item) => item.projectId === project.id)} getRowId={(row) => row.id} searchPlaceholder="جستجوی فروش..." columns={[{ key: 'title', label: 'عنوان', value: (row) => row.title }, { key: 'amount', label: 'مبلغ', value: (row) => row.amount, aggregate: 'sum', render: (row) => formatCurrency(row.amount) }, { key: 'status', label: 'وضعیت', value: (row) => row.status }, { key: 'date', label: 'تاریخ', value: (row) => row.date }]} />;
+    if (kind === 'notes') return <DataTable rows={projectNotes.filter((item) => item.projectId === project.id)} getRowId={(row) => row.id} searchPlaceholder="جستجوی یادداشت..." columns={[{ key: 'title', label: 'عنوان', value: (row) => row.title }, { key: 'body', label: 'متن', value: (row) => row.body }, { key: 'author', label: 'نویسنده', value: (row) => users.find((user) => user.id === row.authorId)?.name }, { key: 'visible', label: 'نمایش مشتری', value: (row) => row.customerVisible ? 'قابل مشاهده برای مشتری' : 'داخلی', render: (row) => <CustomerVisibilityBadge visible={row.customerVisible} /> }]} />;
+    if (kind === 'gantt') return <Card><CardContent><Typography sx={{ fontWeight: 800, mb: 1 }}>گانت برنامه‌ریزی پروژه</Typography><Typography variant="caption" color="text.secondary">نوارها را جابه‌جا کنید و لبه‌های آن‌ها را بکشید تا زمان شروع یا پایان تغییر کند.</Typography><Box ref={ganttRef} sx={{ mt: 2, overflowX: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1, minWidth: 760 }}><Box sx={{ display: 'grid', gridTemplateColumns: '220px 1fr', bgcolor: '#F8FAFC', position: 'sticky', top: 0, zIndex: 1 }}><Typography sx={{ p: 1, fontWeight: 700 }}>وظیفه</Typography><Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${totalDays}, minmax(38px, 1fr))` }}>{Array.from({ length: totalDays }, (_, index) => <Typography key={index} variant="caption" sx={{ p: .75, textAlign: 'center', borderRight: '1px solid #E2E8F0' }}>{new Date(timelineStart.getTime() + index * dayMs).toLocaleDateString('fa-IR', { day: 'numeric', month: 'short' })}</Typography>)}</Box></Box>{ganttTasks.map(({ task, start, end }) => { const left = Math.max(0, (start - timelineStart.getTime()) / dayMs); const width = Math.max(1, (end - start) / dayMs + 1); return <Box key={task.id} sx={{ display: 'grid', gridTemplateColumns: '220px 1fr', minHeight: 48, borderTop: '1px solid #E2E8F0' }}><Box sx={{ p: 1, overflow: 'hidden' }}><Typography noWrap fontWeight={700}>{task.title}</Typography><Typography variant="caption" color="text.secondary">{users.find((user) => user.id === task.assigneeId)?.name ?? '—'} • {taskStatusLabel[task.status]}</Typography></Box><Box sx={{ position: 'relative', backgroundImage: `linear-gradient(to right, #F1F5F9 1px, transparent 1px)`, backgroundSize: `${100 / totalDays}% 100%` }}><Box onPointerDown={(event) => { event.currentTarget.setPointerCapture?.(event.pointerId); setGanttDrag({ taskId: task.id, mode: 'move', originX: event.clientX, start, end }); }} sx={{ position: 'absolute', left: `${left * (100 / totalDays)}%`, width: `${width * (100 / totalDays)}%`, top: 10, height: 27, borderRadius: 1, bgcolor: task.status === 'done' ? 'success.main' : task.status === 'review' ? 'warning.main' : 'primary.main', cursor: 'grab', userSelect: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: .5 }}><Box onPointerDown={(event) => { event.stopPropagation(); setGanttDrag({ taskId: task.id, mode: 'start', originX: event.clientX, start, end }); }} sx={{ width: 8, height: '100%', cursor: 'ew-resize' }} /><Typography variant="caption" color="white" noWrap>{formatDate(task.startDate ?? task.createdAt)} تا {formatDate(task.dueDate)}</Typography><Box onPointerDown={(event) => { event.stopPropagation(); setGanttDrag({ taskId: task.id, mode: 'end', originX: event.clientX, start, end }); }} sx={{ width: 8, height: '100%', cursor: 'ew-resize' }} /></Box></Box></Box>; })}</Box></CardContent></Card>;
+    return <Card><CardContent><Typography sx={{ fontWeight: 700 }}>تایم‌لاین رویدادهای پروژه</Typography>{projectEvents.filter((event) => event.projectId === project.id).map((event) => <Box key={event.id} sx={{ p: 1.5, mt: 1, bgcolor: '#F8FAFC', borderRight: '3px solid #2563EB' }}><Typography sx={{ fontWeight: 600 }}>{event.eventType}</Typography><Typography variant="caption">{formatDate(event.date)} • {event.description}</Typography></Box>)}</CardContent></Card>;
+  };
+  let content = renderOverview(); if (selected === 'tasks') content = renderTasks(); else if (selected === 'timesheets') content = renderTimes(); else if (selected === 'phases') content = renderPhases(); else if (selected !== 'overview') content = renderSimple(selected);
+  return <Box><PageHeader title={project.name} subtitle={`${project.code ?? project.id} • مشتری: ${customer?.company ?? '—'}`} crumbs={['تری‌لیز', 'پروژه‌ها', project.name]} actions={<Button variant="outlined" startIcon={<ChatBubbleOutlined />} onClick={() => setQuery(new URLSearchParams({ view: 'chat' }))}>گفتگوی پروژه</Button>} /><Tabs value={keys.indexOf(selected)} onChange={(_, value) => gotoTab(value)} variant="scrollable" scrollButtons="auto" sx={{ mb: 2 }}>{labels.map((label) => <Tab key={label} label={label} />)}</Tabs>{content}<Dialog open={phaseOpen} onClose={() => setPhaseOpen(false)} fullWidth maxWidth="sm"><DialogTitle>{editingPhase ? 'ویرایش فاز' : 'ایجاد فاز جدید'}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}><TextField required label="عنوان فاز" value={phaseForm.title} onChange={(e) => setPhaseForm({ ...phaseForm, title: e.target.value })} /><TextField label="وضعیت" value={phaseForm.status} onChange={(e) => setPhaseForm({ ...phaseForm, status: e.target.value as ProjectPhase['status'] })} /><Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}><TextField fullWidth type="date" label="تاریخ شروع" value={phaseForm.startDate} onChange={(e) => setPhaseForm({ ...phaseForm, startDate: e.target.value })} slotProps={{ inputLabel: { shrink: true } }} /><TextField fullWidth type="date" label="تاریخ پایان" value={phaseForm.endDate} onChange={(e) => setPhaseForm({ ...phaseForm, endDate: e.target.value })} slotProps={{ inputLabel: { shrink: true } }} /></Stack><TextField type="number" label="پیشرفت" value={phaseForm.progress} onChange={(e) => setPhaseForm({ ...phaseForm, progress: e.target.value })} /><TextField multiline minRows={3} label="توضیحات" value={phaseForm.description} onChange={(e) => setPhaseForm({ ...phaseForm, description: e.target.value })} /><Stack direction="row" sx={{ alignItems: 'center' }}><Checkbox checked={phaseForm.customerVisible} onChange={(e) => setPhaseForm({ ...phaseForm, customerVisible: e.target.checked })} /><Typography variant="body2">قابل مشاهده برای مشتری</Typography></Stack></Stack></DialogContent><DialogActions><Button onClick={() => setPhaseOpen(false)}>انصراف</Button><Button variant="contained" onClick={savePhase}>ذخیره</Button></DialogActions></Dialog>{timer && <Box sx={{ position: 'fixed', bottom: 20, left: 20, zIndex: 1200, bgcolor: 'primary.main', color: 'white', px: 2, py: 1, borderRadius: 2 }}><Typography variant="body2">تایمر فعال: {rows.find((task) => task.id === timer)?.title} — {elapsed} ثانیه</Typography><Button color="inherit" size="small" startIcon={<Stop />} onClick={() => setTimer(null)}>توقف</Button></Box>}</Box>;
 }
