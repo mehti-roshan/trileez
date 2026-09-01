@@ -12,9 +12,9 @@ export default function AppLayout() {
       <Box sx={{ width: { xs: 0, md: drawerWidth }, flexShrink: 0, position: { xs: 'static', md: 'sticky' }, top: 0, height: { xs: 'auto', md: '100vh' }, alignSelf: { md: 'flex-start' }, zIndex: 1200 }}>
         <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
       </Box>
-      <Box sx={{ flex: '1 1 auto', minWidth: 0, width: 'auto', display: 'flex', flexDirection: 'column', direction: 'rtl' }}>
+      <Box sx={{ flex: '1 1 auto', minWidth: 0, width: 'auto', maxWidth: '100%', display: 'flex', flexDirection: 'column', direction: 'rtl', overflowX: 'hidden' }}>
         <Header onMenu={() => setMobileOpen(true)} />
-        <Box component="main" sx={{ p: { xs: 1.5, sm: 2, md: 3 }, flex: 1, minWidth: 0, width: '100%' }}>
+        <Box component="main" sx={{ p: { xs: 1.25, sm: 2, md: 3 }, flex: 1, minWidth: 0, width: '100%', maxWidth: '100%', overflowX: 'hidden' }}>
           <Outlet />
         </Box>
       </Box>

@@ -26,7 +26,9 @@ const themeOptions: ThemeOptions = {
     MuiCssBaseline: {
       styleOverrides: {
         html: { direction: 'rtl' },
-        body: { direction: 'rtl', fontFamily: 'Vazirmatn, Tahoma, Arial, sans-serif' },
+        body: { direction: 'rtl', fontFamily: 'Vazirmatn, Tahoma, Arial, sans-serif', overflowX: 'hidden' },
+        '#root': { minHeight: '100vh', minWidth: 0, maxWidth: '100%', overflowX: 'hidden' },
+        'button, input, textarea, select': { fontFamily: 'inherit' },
       },
     },
     MuiButton: {
@@ -98,13 +100,14 @@ const themeOptions: ThemeOptions = {
         paper: { direction: 'rtl' },
       },
     },
+    MuiTable: { styleOverrides: { root: { direction: 'rtl' } } },
     MuiTableCell: {
       styleOverrides: {
         root: { padding: '12px 16px', fontSize: '0.875rem' },
         head: { fontWeight: 600, backgroundColor: '#F8FAFC', color: '#475569' },
       },
     },
-    MuiChip: { styleOverrides: { root: { fontWeight: 500 } } },
+    MuiChip: { styleOverrides: { root: { fontWeight: 500, maxWidth: '100%' }, label: { overflow: 'hidden', textOverflow: 'ellipsis' } } },
     MuiDrawer: {
       styleOverrides: { paper: { borderLeft: '1px solid #E2E8F0', borderRight: 'none' } },
     },
