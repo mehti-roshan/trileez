@@ -442,7 +442,7 @@ export const timesheets: TimesheetEntry[] = Array.from({ length: 40 }, (_, index
   const projectTasks = tasks.filter((task) => task.projectId === project.id);
   const task = projectTasks[index % Math.max(projectTasks.length, 1)] ?? tasks[index % tasks.length];
   const employeeId = task.assigneeId;
-  const statuses: TimesheetEntry['status'][] = ['approved', 'submitted', 'draft', 'approved', 'rejected'];
+  const statuses: TimesheetEntry['status'][] = ['approved', 'rejected'];
   return {
     id: `ts${index + 1}`,
     employeeId,
@@ -455,6 +455,7 @@ export const timesheets: TimesheetEntry[] = Array.from({ length: 40 }, (_, index
     hourlyRate: 180_000 + (index % 5) * 35_000,
     calculatedCost: (2 + (index % 7)) * (180_000 + (index % 5) * 35_000),
     billable: index % 4 !== 0,
+    billingStatus: index % 5 === 0 ? 'paid' : 'unpaid',
     description: index % 2 ? 'پیاده‌سازی و هماهنگی با تیم پروژه' : 'جلسه، تحلیل و ثبت خروجی روزانه',
     status: statuses[index % statuses.length],
     customerVisible: Boolean(task.customerVisible && index % 3 !== 0),

@@ -19,7 +19,7 @@ import { ContractsPage, InvoiceDetailPage, InvoicesPage, InstallmentsPage, Leads
 import { ActivitiesPage, GoalsPage, ResalesPage, TimesheetsPage } from './pages/SupplementalPages.tsx';
 import { AnnouncementsPage, ExportsPage, KnowledgePage, NotificationPage, RemindersPage } from './pages/UtilityPages.tsx';
 import { AttendancePage, DocumentsPage, EmployeeDetailPage, EmployeesPage, HRDashboardPage, LeavesPage, MissionsPage, PayrollPage, PerformanceDetailPage, PerformancePage, RecruitmentPage } from './pages/HRPages.tsx';
-import { BankAccountsPage, ExpensesPage, FinanceDashboardPage, FinanceReportsPage, HesabfaPage, ReceivablesPage, SuppliersPage } from './pages/FinancePages.tsx';
+import { BankAccountsPage, BillableWorkPage, ExpensesPage, FinanceDashboardPage, FinanceReportsPage, HesabfaPage, ReceivablesPage, SuppliersPage } from './pages/FinancePages.tsx';
 import { ChatPage, DocumentsRepositoryPage, PerformancePointsPage, ProjectEventsPage, TaskLabelsPage } from './pages/AdvancedPages.tsx';
 import FileManagerPage from './pages/FileManagerPage.tsx';
 
@@ -55,6 +55,7 @@ export default function App() {
         <Route path="/sales" element={<SalesOverviewPage />} />
         <Route path="/finance" element={<FinanceDashboardPage />} />
         <Route path="/finance/expenses" element={<ExpensesPage />} />
+        <Route path="/finance/billable-work" element={<BillableWorkPage />} />
         <Route path="/finance/receivables" element={<ReceivablesPage />} />
         <Route path="/finance/bank-accounts" element={<BankAccountsPage />} />
         <Route path="/finance/suppliers" element={<SuppliersPage />} />

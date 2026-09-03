@@ -49,7 +49,8 @@ export interface ResaleOpportunity { id: string; customerId: string; productId: 
 export type GoalStatus = 'in_progress' | 'completed' | 'overdue' | 'cancelled';
 export interface Goal { id: string; title: string; ownerId: string; department: string; period: string; target: number; current: number; progress: number; status: GoalStatus; dueDate: string; description: string; createdAt: string }
 export type TimesheetStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
-export interface TimesheetEntry { id: string; employeeId: string; projectId: string; taskId: string; date: string; hours: number; startTime?: string; endTime?: string; hourlyRate?: number; calculatedCost?: number; billable: boolean; customerVisible?: boolean; description: string; status: TimesheetStatus; createdAt: string }
+export type TimesheetBillingStatus = 'unpaid' | 'paid';
+export interface TimesheetEntry { id: string; employeeId: string; projectId: string; taskId: string; date: string; hours: number; startTime?: string; endTime?: string; hourlyRate?: number; calculatedCost?: number; billable: boolean; billingStatus?: TimesheetBillingStatus; customerVisible?: boolean; description: string; status: TimesheetStatus; createdAt: string }
 export interface ActivityLog { id: string; action: string; description: string; userId: string; timestamp: string; entityType: string; entityId: string; ip?: string; metadata?: string }
 export type EmploymentStatus = 'active' | 'leave' | 'suspended' | 'terminated';
 export type EmploymentType = 'full_time' | 'part_time' | 'project' | 'intern';
@@ -84,5 +85,5 @@ export interface ChatGroup { id: string; name: string; projectId?: string; membe
 export interface Message { id: string; conversationId: string; senderId: string; body: string; sentAt: string; read: boolean; attachments?: Attachment[] }
 export interface ProjectEvent { id: string; projectId?: string; personId?: string; eventType: string; stage: 'ثبت شد' | 'در حال پیگیری' | 'انجام شد'; priority: 'عادی' | 'بالا' | 'بسیار بالا'; status: 'open' | 'completed'; date: string; registeredBy: string; description: string; result?: string; attachments?: string[]; customerVisible?: boolean }
 export interface ProjectPhase { id: string; projectId: string; title: string; status: 'planned' | 'in_progress' | 'completed' | 'on_hold'; startDate: string; endDate: string; progress: number; managerId: string; description: string; customerVisible?: boolean }
-export interface ProjectNote { id: string; projectId: string; title: string; body: string; authorId: string; category: string; customerVisible: boolean; createdAt: string }
+export interface ProjectNote { id: string; projectId: string; taskId?: string; title: string; body: string; authorId: string; category: string; customerVisible: boolean; createdAt: string }
 export interface ProjectSale { id: string; projectId: string; customerId: string; title: string; amount: number; type: string; status: string; date: string; documentNumber: string }

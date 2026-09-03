@@ -7,13 +7,13 @@ import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import PageHeader from '../components/common/PageHeader.tsx';
 import QuickCreateDialog from '../components/common/QuickCreateDialog.tsx';
-import { bankAccounts, contracts, customers, expenses, invoices, installments, payments, projects, suppliers, timesheets } from '../mock/data.ts';
+import { bankAccounts, contracts, customers, expenses, invoices, installments, payments, projects, suppliers, tasks, timesheets, users } from '../mock/data.ts';
 import { formatCurrency, formatDate } from '../utils/format.ts';
 import { invoicePaidAmount, laborCost, lineItemTotals } from '../utils/finance.ts';
 import { syncStateLabel } from '../services/accountingProvider.ts';
 import DataTable from '../components/common/DataTable.tsx';
 import CsvToolbar from '../components/common/CsvToolbar.tsx';
-import { expenseRepository, supplierRepository } from '../services/repositories.ts';
+import { expenseRepository, supplierRepository, timesheetRepository } from '../services/repositories.ts';
 
 const normalizeDigits = (value: string) => value.replace(/[۰-۹]/g, (digit) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit))).replace(/[٬,]/g, '');
 const csvField = (row: Record<string, string>, ...keys: string[]) => keys.map((key) => row[key]).find((value) => value !== undefined && value !== '') ?? '';
@@ -73,6 +73,46 @@ function ModernSuppliersPage() {
 
 export function ReceivablesPage() { return <ModernReceivablesPage />; }
 export function SuppliersPage() { return <ModernSuppliersPage />; }
+
+export function BillableWorkPage() {
+  const [rows, setRows] = useState(() => timesheetRepository.list());
+  useEffect(() => timesheetRepository.subscribe(setRows), []);
+  const billable = rows.filter((row) => row.billable);
+  const toggleBilling = (id: string, billingStatus: 'paid' | 'unpaid') => timesheetRepository.update(id, { billingStatus });
+  const csvColumns = [
+    { key: 'employee', label: 'کارمند', value: (row) => users.find((user) => user.id === row.employeeId)?.name ?? '—' },
+    { key: 'project', label: 'پروژه', value: (row) => projectName(row.projectId) },
+    { key: 'task', label: 'وظیفه', value: (row) => tasks.find((task) => task.id === row.taskId)?.title ?? '—' },
+    { key: 'date', label: 'تاریخ', value: (row) => row.date },
+    { key: 'hours', label: 'ساعت', value: (row) => row.hours },
+    { key: 'cost', label: 'هزینه', value: (row) => row.calculatedCost ?? row.hours * (row.hourlyRate ?? 200000) },
+    { key: 'status', label: 'وضعیت تایید', value: (row) => row.status === 'approved' ? 'تایید شده' : 'رد شده' },
+    { key: 'billingStatus', label: 'وضعیت پرداخت', value: (row) => row.billingStatus === 'paid' ? 'پرداخت شده' : 'پرداخت نشده' },
+  ];
+  return <Shell title="کار قابل صورتحساب" subtitle="مدیریت مالی ساعات کاری تاییدشده پروژه‌ها و وظایف" action={<CsvToolbar rows={billable} entityLabel="کار قابل صورتحساب" filename="billable-work.csv" columns={csvColumns} />}>
+    <Stats items={[
+      { label: 'کل ساعات قابل صورتحساب', value: `${billable.reduce((sum, row) => sum + row.hours, 0)} ساعت` },
+      { label: 'کار تاییدشده', value: `${billable.filter((row) => row.status === 'approved').reduce((sum, row) => sum + row.hours, 0)} ساعت`, color: 'success.main' },
+      { label: 'پرداخت‌نشده', value: formatCurrency(billable.filter((row) => row.billingStatus !== 'paid').reduce((sum, row) => sum + (row.calculatedCost ?? row.hours * (row.hourlyRate ?? 200000)), 0)), color: 'warning.main' },
+      { label: 'پرداخت‌شده', value: formatCurrency(billable.filter((row) => row.billingStatus === 'paid').reduce((sum, row) => sum + (row.calculatedCost ?? row.hours * (row.hourlyRate ?? 200000)), 0)), color: 'success.main' },
+    ]} />
+    <Card sx={{ p: 1 }}><DataTable rows={billable} getRowId={(row) => row.id} searchPlaceholder="جستجوی کارمند، پروژه یا وظیفه..." filters={[
+      { key: 'status', label: 'وضعیت تایید', options: [{ value: 'approved', label: 'تایید شده' }, { value: 'rejected', label: 'رد شده' }], value: (row) => row.status },
+      { key: 'billingStatus', label: 'وضعیت پرداخت', options: [{ value: 'paid', label: 'پرداخت شده' }, { value: 'unpaid', label: 'پرداخت نشده' }], value: (row) => row.billingStatus ?? 'unpaid' },
+    ]} columns={[
+      { key: 'employee', label: 'کارمند', value: (row) => users.find((user) => user.id === row.employeeId)?.name ?? '—' },
+      { key: 'project', label: 'پروژه', value: (row) => projectName(row.projectId), groupable: true },
+      { key: 'task', label: 'وظیفه', value: (row) => tasks.find((task) => task.id === row.taskId)?.title ?? '—' },
+      { key: 'date', label: 'تاریخ', value: (row) => row.date, render: (row) => formatDate(row.date) },
+      { key: 'hours', label: 'ساعت', value: (row) => row.hours, aggregate: 'sum', render: (row) => `${row.hours} ساعت` },
+      { key: 'rate', label: 'نرخ ساعتی', value: (row) => row.hourlyRate ?? 200000, render: (row) => formatCurrency(row.hourlyRate ?? 200000) },
+      { key: 'cost', label: 'هزینه کار', value: (row) => row.calculatedCost ?? row.hours * (row.hourlyRate ?? 200000), aggregate: 'sum', render: (row) => formatCurrency(row.calculatedCost ?? row.hours * (row.hourlyRate ?? 200000)) },
+      { key: 'status', label: 'وضعیت تایید', value: (row) => row.status, render: (row) => chip(row.status) },
+      { key: 'billingStatus', label: 'وضعیت پرداخت', value: (row) => row.billingStatus ?? 'unpaid', render: (row) => <Stack direction="row" spacing={.5} alignItems="center"><Chip size="small" color={row.billingStatus === 'paid' ? 'success' : 'warning'} label={row.billingStatus === 'paid' ? 'پرداخت شده' : 'پرداخت نشده'} /><Button size="small" variant="outlined" disabled={row.status !== 'approved'} onClick={() => toggleBilling(row.id, row.billingStatus === 'paid' ? 'unpaid' : 'paid')}>{row.billingStatus === 'paid' ? 'لغو پرداخت' : row.status === 'approved' ? 'پرداخت' : 'ابتدا تایید شود'}</Button></Stack> },
+      { key: 'description', label: 'شرح', value: (row) => row.description },
+    ]} /></Card>
+  </Shell>;
+}
 
 export function LegacyReceivablesPage() { const [status, setStatus] = useState('all'); const rows = invoices.map((x) => ({ ...x, balance: x.amount - x.paidAmount, receivableStatus: x.paidAmount >= x.amount ? 'paid' : x.dueDate < new Date().toISOString() ? 'overdue' : x.paidAmount > 0 ? 'partial' : 'future' })).filter((x) => status === 'all' || x.receivableStatus === status); const total = rows.reduce((s, x) => s + x.balance, 0); return <Shell title="مطالبات" subtitle="پایش مانده حساب مشتریان و سررسید دریافت‌ها"><Stats items={[{ label: 'کل مطالبات', value: formatCurrency(total) }, { label: 'مطالبات معوق', value: formatCurrency(rows.filter((x) => x.receivableStatus === 'overdue').reduce((s, x) => s + x.balance, 0)), color: 'error.main' }, { label: 'سررسید این هفته', value: `${rows.filter((x) => x.receivableStatus === 'future').length} فاکتور`, color: 'warning.main' }]} /><Select value={status} onChange={(e) => setStatus(e.target.value)} sx={{ mb: 2, minWidth: 220 }}><MenuItem value="all">همه وضعیت‌ها</MenuItem><MenuItem value="overdue">معوق</MenuItem><MenuItem value="future">سررسید نشده</MenuItem><MenuItem value="partial">بخشی پرداخت شده</MenuItem></Select><Card><Table><TableHead><TableRow>{['مشتری','فاکتور','پروژه','سررسید','مبلغ','پرداخت‌شده','مانده','وضعیت'].map((h) => <TableCell key={h}>{h}</TableCell>)}</TableRow></TableHead><TableBody>{rows.map((x) => <TableRow key={x.id} hover><TableCell>{customerName(x.customerId)}</TableCell><TableCell>{x.number}</TableCell><TableCell>{projectName(x.projectId)}</TableCell><TableCell>{formatDate(x.dueDate)}</TableCell><TableCell>{formatCurrency(x.amount)}</TableCell><TableCell>{formatCurrency(x.paidAmount)}</TableCell><TableCell>{formatCurrency(x.balance)}</TableCell><TableCell>{chip(x.receivableStatus)}</TableCell></TableRow>)}</TableBody></Table></Card></Shell>; }
 
