@@ -18,6 +18,13 @@ html {
 body {
   margin: 0;
   background: #f8fafc;
+  overflow-x: hidden;
+}
+
+/* Keep long enterprise views contained without forcing page-level overflow. */
+.MuiTableContainer-root,
+.MuiDialogContent-root {
+  max-width: 100%;
 }
 
 a {

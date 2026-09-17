@@ -1,5 +1,5 @@
-import { Add, ArrowBack, Search } from '@mui/icons-material';
-import { Box, Button, Card, CardContent, Chip, Divider, FormControl, InputAdornment, InputLabel, MenuItem, Select, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from '@mui/material';
+import { Add, ArrowBack, DeleteOutlined, Search } from '@mui/icons-material';
+import { Box, Button, Card, CardContent, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Divider, FormControl, IconButton, InputAdornment, InputLabel, MenuItem, Select, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from '@mui/material';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import PageHeader from '../components/common/PageHeader.tsx';
@@ -12,9 +12,11 @@ import CsvToolbar from '../components/common/CsvToolbar.tsx';
 import DataTable from '../components/common/DataTable.tsx';
 import CustomerVisibilityBadge from '../components/common/CustomerVisibilityBadge.tsx';
 import { invoicePaidAmount, lineItemTotals } from '../utils/finance.ts';
-import { contractRepository, installmentRepository, invoiceRepository, leadRepository, paymentRepository, productRepository, proposalRepository } from '../services/repositories.ts';
+import { contractRepository, customerRepository, installmentRepository, invoiceRepository, leadRepository, paymentRepository, productRepository, proposalRepository } from '../services/repositories.ts';
+import { leadActivityRepository } from '../services/repositories.ts';
+import { useApp } from '../context/AppContext.tsx';
 
-const statusLabels: Record<string, string> = { new: 'جدید', contacted: 'تماس گرفته شد', qualified: 'واجد شرایط', lost: 'از دست‌رفته', converted: 'تبدیل‌شده', draft: 'پیش‌نویس', sent: 'ارسال‌شده', viewed: 'مشاهده شده', approved: 'پذیرفته شده', rejected: 'رد شده', expired: 'منقضی شده', issued: 'صادر شده', partial: 'بخشی پرداخت شده', paid: 'تسویه شده', overdue: 'سررسید شده', cancelled: 'لغو شده', active: 'فعال', expiring: 'در حال انقضا', pending: 'در انتظار امضا', terminated: 'فسخ شده', future: 'آینده', due: 'نزدیک به سررسید' };
+const statusLabels: Record<string, string> = { new: 'جدید', contacted: 'تماس گرفته شد', qualified: 'واجد شرایط', lost: 'از دست‌رفته', converted: 'تبدیل‌شده', rejected: 'رد شده', inactive: 'غیرفعال', draft: 'پیش‌نویس', sent: 'ارسال‌شده', viewed: 'مشاهده شده', approved: 'پذیرفته شده', expired: 'منقضی شده', issued: 'صادر شده', partial: 'بخشی پرداخت شده', paid: 'تسویه شده', overdue: 'سررسید شده', cancelled: 'لغو شده', active: 'فعال', expiring: 'در حال انقضا', pending: 'در انتظار امضا', terminated: 'فسخ شده', future: 'آینده', due: 'نزدیک به سررسید' };
 const colorFor = (status: string) => ['paid', 'approved', 'active', 'converted', 'issued'].includes(status) ? 'success' : ['overdue', 'lost', 'expired', 'rejected', 'terminated'].includes(status) ? 'error' : ['sent', 'viewed', 'qualified', 'partial', 'due', 'expiring'].includes(status) ? 'warning' : 'default';
 const customerName = (id: string) => { const item = customers.find((x) => x.id === id); return item ? `${item.code ?? `C-${600000 + Number(item.id.slice(1))}`} — ${item.company}` : '—'; };
 const projectDisplayName = (id?: string) => { const item = projects.find((x) => x.id === id); return item ? `${item.code ?? `P-${700000 + Number(item.id.slice(1))}`} — ${item.name}` : '—'; };
@@ -38,15 +40,31 @@ function importFinanceRows(rows: Record<string, string>[], create: (row: Record<
   return { created, errors };
 }
 
+function useCreateQueryState() {
+  const [params, setParams] = useSearchParams();
+  const open = params.get('create') === '1';
+  const setOpen = (nextOpen: boolean) => setParams((current) => {
+    const next = new URLSearchParams(current);
+    if (nextOpen) next.set('create', '1'); else next.delete('create');
+    return next;
+  }, { replace: true });
+  return [open, setOpen] as const;
+}
+
 function Shell({ title, subtitle, children, action }: { title: string; subtitle: string; children: ReactNode; action?: ReactNode }) {
   const formFields = title.includes('مشتریان احتمالی') ? ['نام', 'شرکت', 'ایمیل', 'تلفن', 'ارزش مشتری احتمالی', 'منبع', 'توضیحات'] : title.includes('پیش‌فاکتور') ? ['شماره پیش‌فاکتور', 'مشتری', 'پروژه', 'تاریخ صدور', 'تاریخ اعتبار', 'مبلغ', 'تخفیف', 'مالیات'] : title.includes('فاکتور') ? ['شماره فاکتور', 'مشتری', 'پروژه', 'تاریخ صدور', 'تاریخ سررسید', 'مبلغ', 'تخفیف', 'مالیات'] : title.includes('پرداخت') ? ['مشتری', 'فاکتور', 'پروژه', 'مبلغ', 'تاریخ پرداخت', 'روش پرداخت', 'شماره پیگیری', 'توضیحات'] : title.includes('محصولات') ? ['نام محصول / خدمت', 'کد محصول', 'دسته‌بندی', 'نوع', 'واحد', 'قیمت', 'نرخ مالیات'] : title.includes('قرارداد') ? ['عنوان قرارداد', 'شماره قرارداد', 'مشتری', 'پروژه', 'تاریخ شروع', 'تاریخ پایان', 'مبلغ', 'شرایط پرداخت'] : title.includes('اقساط') ? ['مشتری', 'قرارداد', 'فاکتور', 'پروژه', 'شماره قسط', 'سررسید', 'مبلغ'] : ['عنوان', 'توضیحات'];
   const defaultAction = action ?? <QuickCreateDialog title={`ایجاد ${title}`} fields={formFields} />;
-  return <Box><PageHeader title={title} subtitle={subtitle} crumbs={['تری‌لیز', title]} actions={<Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>{action ? null : csvFor(title)}{defaultAction}</Stack>} />{children}</Box>;
+  // DataTable provides the canonical CSV/search toolbar for active pages.
+  // Keep the header focused on the primary create action to avoid duplicate
+  // CSV controls when a table also renders its toolbar.
+  return <Box><PageHeader title={title} subtitle={subtitle} crumbs={['تری‌لیز', title]} actions={<Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>{!action && csvFor(title)}{defaultAction}</Stack>} />{children}</Box>;
 }
 
-function FinanceCreateButton({ title, fields, onSave }: { title: string; fields: EntityField[]; onSave: (values: Record<string, string>) => void }) {
-  const [open, setOpen] = useState(false);
-  return <><Button variant="contained" startIcon={<Add />} onClick={() => setOpen(true)}>ایجاد مورد جدید</Button><EntityFormDialog open={open} onClose={() => setOpen(false)} title={title} fields={fields} onSubmit={async (values) => onSave(values)} /></>;
+function FinanceCreateButton({ title, fields, onSave, open: controlledOpen, onOpenChange }: { title: string; fields: EntityField[]; onSave: (values: Record<string, string>) => void; open?: boolean; onOpenChange?: (open: boolean) => void }) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
+  return <><Button variant="contained" startIcon={<Add />} onClick={() => setOpen(true)}>ایجاد مورد جدید</Button><EntityFormDialog open={open} onClose={() => setOpen(false)} title={title} fields={fields} onSubmit={async (values) => { onSave(values); setOpen(false); }} /></>;
 }
 function csvFor(title: string): ReactNode {
   if (title === 'مشتریان احتمالی') return <CsvToolbar rows={leads} entityLabel="مشتریان احتمالی" filename="leads.csv" columns={[{ key: 'name', label: 'نام', value: (x) => x.name }, { key: 'company', label: 'شرکت', value: (x) => x.company }, { key: 'email', label: 'ایمیل', value: (x) => x.email }, { key: 'تلفن', label: 'تلفن', value: (x) => x.phone }, { key: 'status', label: 'وضعیت', value: (x) => statusLabels[x.status] ?? x.status }, { key: 'value', label: 'ارزش احتمالی', value: (x) => x.estimatedValue }]} />;
@@ -78,15 +96,102 @@ const tableColumns = {
   ],
 };
 
+const leadStages = [
+  { value: 'new', label: 'جدید' },
+  { value: 'contact_attempt', label: 'تلاش برای تماس' },
+  { value: 'contacted', label: 'تماس برقرار شد' },
+  { value: 'initial_review', label: 'بررسی اولیه' },
+  { value: 'qualified', label: 'واجد شرایط' },
+];
+const leadSources = ['وب‌سایت', 'اینستاگرام', 'دیوار', 'شخص دیگر', 'سایر'];
+const leadStatusValue = (value: unknown): string => {
+  const normalized = String(value ?? '').trim();
+  return ['active', 'inactive', 'converted', 'rejected'].includes(normalized) ? normalized : 'active';
+};
+const recordLeadChange = (leadId: string, field: 'status' | 'stage', from: string, to: string, actorId: string) => {
+  if (from === to) return;
+  const labels: Record<string, string> = { active: 'فعال', inactive: 'غیرفعال', converted: 'تبدیل‌شده', rejected: 'ردشده', new: 'جدید', contact_attempt: 'تلاش برای تماس', contacted: 'تماس برقرار شد', initial_review: 'بررسی اولیه', qualified: 'واجد شرایط' };
+  const fieldLabel = field === 'status' ? 'وضعیت' : 'مرحله';
+  leadActivityRepository.create({ leadId, type: field === 'status' ? 'status_changed' : 'stage_changed', title: `تغییر ${fieldLabel} مشتری احتمالی`, description: `${fieldLabel} از «${labels[from] ?? from}» به «${labels[to] ?? to}» تغییر کرد.`, occurredAt: new Date().toISOString(), actorId, metadata: { from, to } });
+};
+
+function LeadCreateDialog({ onSave, open, onOpenChange }: { onSave: (value: Record<string, unknown>) => void; open: boolean; onOpenChange: (open: boolean) => void }) {
+  const [values, setValues] = useState<Record<string, string>>({ country: 'ایران', status: 'active', stage: 'new' });
+  const [phones, setPhones] = useState([{ type: 'موبایل', number: '' }]);
+  const [emails, setEmails] = useState([{ type: 'کاری', address: '' }]);
+  const set = (key: string, value: string) => setValues((current) => ({ ...current, [key]: value }));
+  const close = () => { onOpenChange(false); setValues({ country: 'ایران', status: 'active', stage: 'new' }); setPhones([{ type: 'موبایل', number: '' }]); setEmails([{ type: 'کاری', address: '' }]); };
+  const submit = () => {
+    let selectedCompany = customers.find((item) => item.id === values.companyId);
+    if (values.companyId === 'new-company' && String(values.company ?? '').trim()) {
+      selectedCompany = customerRepository.create({ ...customers[0], id: undefined, entityType: 'company', company: String(values.company).trim(), name: String(values.company).trim(), email: '', phone: '', groups: [], currency: 'IRR', status: 'lead', value: 0, lastContact: new Date().toISOString(), assignedTo: users[0].id });
+    }
+    onSave({ ...values, company: selectedCompany?.company ?? values.company ?? '', companyId: selectedCompany?.id, referralContact: values.referralContact ?? '', referralDescription: values.referralDescription ?? '', phones: phones.filter((item) => item.number.trim()), emails: emails.filter((item) => item.address.trim()) });
+    close();
+  };
+  return <><Button variant="contained" startIcon={<Add />} onClick={() => onOpenChange(true)}>ایجاد مشتری احتمالی</Button><Dialog open={open} onClose={close} fullWidth maxWidth="md" slotProps={{ paper: { sx: { direction: 'rtl', maxHeight: 'calc(100vh - 24px)', borderRadius: 3 } } }}>
+    <DialogTitle sx={{ pb: 1, fontWeight: 800 }}>ایجاد سرنخ جدید</DialogTitle>
+    <DialogContent sx={{ px: { xs: 2, sm: 3 }, pb: 2 }}><Stack spacing={2.5} sx={{ pt: 1 }}>
+      <Typography sx={{ fontWeight: 800, fontSize: '0.95rem', borderBottom: '1px solid', borderColor: 'divider', pb: 1 }}>اطلاعات شخصی</Typography>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}><TextField fullWidth label="نام" value={values.firstName ?? ''} onChange={(e) => set('firstName', e.target.value)} /><TextField fullWidth label="نام خانوادگی" value={values.lastName ?? ''} onChange={(e) => set('lastName', e.target.value)} /></Stack>
+      <Typography sx={{ fontWeight: 800, fontSize: '0.95rem', borderBottom: '1px solid', borderColor: 'divider', pb: 1 }}>اطلاعات تماس</Typography>
+      <Stack spacing={1.25}>{phones.map((phone, index) => <Stack key={`phone-${index}`} direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { xs: 'stretch', sm: 'center' }, p: 1.25, border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: 'action.hover' }}><FormControl sx={{ minWidth: { sm: 130 } }}><InputLabel>نوع شماره</InputLabel><Select label="نوع شماره" value={phone.type} onChange={(e) => setPhones((items) => items.map((item, i) => i === index ? { ...item, type: e.target.value } : item))}><MenuItem value="موبایل">موبایل</MenuItem><MenuItem value="ثابت">ثابت</MenuItem><MenuItem value="واتساپ">واتساپ</MenuItem></Select></FormControl><TextField fullWidth label="شماره تلفن" value={phone.number} onChange={(e) => setPhones((items) => items.map((item, i) => i === index ? { ...item, number: e.target.value } : item))} slotProps={{ htmlInput: { dir: 'ltr' } }} />{phones.length > 1 && <IconButton sx={{ alignSelf: { xs: 'flex-end', sm: 'center' } }} onClick={() => setPhones((items) => items.filter((_, i) => i !== index))}><DeleteOutlined /></IconButton>}</Stack>)}</Stack>
+      <Button size="small" variant="outlined" onClick={() => setPhones((items) => [...items, { type: 'موبایل', number: '' }])}>افزودن شماره تلفن</Button>
+      <Stack spacing={1.25}>{emails.map((email, index) => <Stack key={`email-${index}`} direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { xs: 'stretch', sm: 'center' }, p: 1.25, border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: 'action.hover' }}><FormControl sx={{ minWidth: { sm: 130 } }}><InputLabel>نوع ایمیل</InputLabel><Select label="نوع ایمیل" value={email.type} onChange={(e) => setEmails((items) => items.map((item, i) => i === index ? { ...item, type: e.target.value } : item))}><MenuItem value="کاری">کاری</MenuItem><MenuItem value="شخصی">شخصی</MenuItem><MenuItem value="عمومی">عمومی</MenuItem></Select></FormControl><TextField fullWidth label="آدرس ایمیل" value={email.address} onChange={(e) => setEmails((items) => items.map((item, i) => i === index ? { ...item, type: item.type, address: e.target.value } : item))} slotProps={{ htmlInput: { dir: 'ltr' } }} />{emails.length > 1 && <IconButton sx={{ alignSelf: { xs: 'flex-end', sm: 'center' } }} onClick={() => setEmails((items) => items.filter((_, i) => i !== index))}><DeleteOutlined /></IconButton>}</Stack>)}</Stack>
+      <Button size="small" variant="outlined" onClick={() => setEmails((items) => [...items, { type: 'کاری', address: '' }])}>افزودن ایمیل</Button>
+      <Typography sx={{ fontWeight: 800, fontSize: '0.95rem', borderBottom: '1px solid', borderColor: 'divider', pb: 1 }}>اطلاعات مکانی</Typography>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}><TextField fullWidth label="آدرس" value={values.address ?? ''} onChange={(e) => set('address', e.target.value)} /><TextField fullWidth label="شهر" value={values.city ?? ''} onChange={(e) => set('city', e.target.value)} /><TextField fullWidth label="استان" value={values.province ?? ''} onChange={(e) => set('province', e.target.value)} /></Stack>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}><TextField fullWidth label="کشور" value={values.country ?? ''} onChange={(e) => set('country', e.target.value)} /><TextField fullWidth label="کد پستی" value={values.postalCode ?? ''} onChange={(e) => set('postalCode', e.target.value)} slotProps={{ htmlInput: { dir: 'ltr' } }} /></Stack>
+      <Typography sx={{ fontWeight: 800, fontSize: '0.95rem', borderBottom: '1px solid', borderColor: 'divider', pb: 1 }}>اطلاعات کسب‌وکار</Typography>
+      <FormControl fullWidth><InputLabel>شرکت</InputLabel><Select label="شرکت" value={values.companyId ?? ''} onChange={(e) => set('companyId', e.target.value)}><MenuItem value="">بدون شرکت</MenuItem>{customers.map((item) => <MenuItem key={item.id} value={item.id}>{item.company}</MenuItem>)}<MenuItem value="new-company">ایجاد شرکت جدید</MenuItem></Select></FormControl>
+      {values.companyId === 'new-company' && <TextField fullWidth label="نام شرکت جدید" value={values.company ?? ''} onChange={(e) => set('company', e.target.value)} />}
+      <TextField fullWidth label="وب‌سایت" value={values.website ?? ''} onChange={(e) => set('website', e.target.value)} slotProps={{ htmlInput: { dir: 'ltr' } }} />
+      <TextField fullWidth multiline minRows={3} label="شرح" value={values.notes ?? ''} onChange={(e) => set('notes', e.target.value)} />
+      <Typography sx={{ fontWeight: 800, fontSize: '0.95rem', borderBottom: '1px solid', borderColor: 'divider', pb: 1 }}>اطلاعات مشتری</Typography>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}><FormControl fullWidth><InputLabel>منبع مشتری</InputLabel><Select label="منبع مشتری" value={values.source ?? ''} onChange={(e) => set('source', e.target.value)}><MenuItem value="">بدون منبع</MenuItem>{leadSources.map((item) => <MenuItem key={item} value={item}>{item}</MenuItem>)}</Select></FormControl><FormControl fullWidth><InputLabel>مسئول</InputLabel><Select label="مسئول" value={values.assignedTo ?? users[0]?.id} onChange={(e) => set('assignedTo', e.target.value)}>{users.map((item) => <MenuItem key={item.id} value={item.id}>{item.name} — {item.title}</MenuItem>)}</Select></FormControl></Stack>
+      {values.source === 'شخص دیگر' && <TextField fullWidth label="معرفی‌شده توسط چه کسی؟" value={values.referralContact ?? ''} onChange={(e) => set('referralContact', e.target.value)} />}
+      {values.source === 'سایر' && <TextField fullWidth multiline minRows={2} label="توضیحات منبع مشتری" value={values.referralDescription ?? ''} onChange={(e) => set('referralDescription', e.target.value)} />}
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}><FormControl fullWidth><InputLabel>وضعیت</InputLabel><Select label="وضعیت" value={values.status ?? 'active'} onChange={(e) => set('status', e.target.value)}><MenuItem value="active">فعال</MenuItem><MenuItem value="inactive">غیرفعال</MenuItem><MenuItem value="converted">تبدیل‌شده</MenuItem><MenuItem value="rejected">ردشده</MenuItem></Select></FormControl><FormControl fullWidth><InputLabel>مرحله</InputLabel><Select label="مرحله" value={values.stage ?? 'new'} onChange={(e) => set('stage', e.target.value)}>{leadStages.map((item) => <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>)}</Select></FormControl></Stack>
+    </Stack></DialogContent><DialogActions sx={{ px: { xs: 2, sm: 3 }, py: 2, gap: 1, borderTop: '1px solid', borderColor: 'divider' }}><Button onClick={close}>انصراف</Button><Button variant="contained" onClick={submit}>ذخیره سرنخ</Button></DialogActions>
+  </Dialog></>;
+}
+
 function ModernLeadsPage() {
+  const [createOpen, setCreateOpen] = useCreateQueryState();
+  const navigate = useNavigate();
+  const { user } = useApp();
   const [rows, setRows] = useState(() => leadRepository.list());
   useEffect(() => leadRepository.subscribe(setRows), []);
-  return <Shell title="مشتریان احتمالی" subtitle="قیف فروش از اولین تماس تا تبدیل به مشتری" action={<QuickCreateDialog title="ایجاد مشتری احتمالی" fields={['نام و شرکت', 'ایمیل', 'تلفن', 'ارزش احتمالی', 'توضیحات']} onSave={(v) => leadRepository.create({ ...leads[0], id: undefined, name: v['نام و شرکت'], company: v['نام و شرکت'], email: v['ایمیل'] ?? '', phone: v['تلفن'] ?? '', estimatedValue: Number(v['ارزش احتمالی']) || 0, status: 'new', source: 'ورودی جدید', notes: v['توضیحات'] ?? '', createdAt: new Date().toISOString(), lastContactAt: new Date().toISOString(), nextFollowUpAt: new Date().toISOString(), assignedTo: 'u1', tags: [] })} />}>
-    <Card sx={{ p: 1 }}><DataTable rows={rows} columns={tableColumns.leads} getRowId={(row) => row.id} searchPlaceholder="جستجوی نام، شرکت، ایمیل یا تلفن..." toolbar={<CsvToolbar rows={rows} entityLabel="مشتریان احتمالی" filename="leads.csv" columns={tableColumns.leads} onImport={(items) => importFinanceRows(items, (row) => leadRepository.create({ ...leads[0], id: undefined, name: csvField(row, 'نام', 'name'), company: csvField(row, 'شرکت', 'company') || csvField(row, 'نام', 'name'), email: csvField(row, 'ایمیل', 'email'), phone: csvField(row, 'تلفن', 'phone'), estimatedValue: Number(normalizeDigits(csvField(row, 'ارزش احتمالی', 'value'))) || 0, status: 'new', source: 'ورود CSV', notes: '', createdAt: new Date().toISOString(), lastContactAt: new Date().toISOString(), nextFollowUpAt: new Date().toISOString(), assignedTo: users[0].id, tags: [] }), ['نام', 'name'])} />} filters={[{ key: 'status', label: 'وضعیت', options: Object.entries(statusLabels).filter(([key]) => ['new', 'contacted', 'qualified', 'converted', 'lost'].includes(key)).map(([value, label]) => ({ value, label })), value: (row) => row.status }]} /></Card>
+  useEffect(() => {
+    rows.forEach((row) => {
+      const status = leadStatusValue(row.status);
+      if (row.status !== status) leadRepository.update(row.id, { status: status as typeof row.status });
+    });
+  }, [rows]);
+  const createLead = (value: Record<string, unknown>) => {
+    const now = new Date().toISOString();
+    const firstName = String(value.firstName ?? '');
+    const lastName = String(value.lastName ?? '');
+    const phones = (value.phones as { type: string; number: string }[] | undefined) ?? [];
+    const emails = (value.emails as { type: string; address: string }[] | undefined) ?? [];
+    leadRepository.create({ ...leads[0], id: undefined, name: [firstName, lastName].filter(Boolean).join(' ') || String(value.company ?? 'سرنخ جدید'), firstName, lastName, company: String(value.company ?? ''), companyId: value.companyId as string | undefined, email: emails[0]?.address ?? '', phone: phones[0]?.number ?? '', phones, emails, address: String(value.address ?? ''), city: String(value.city ?? ''), province: String(value.province ?? ''), country: String(value.country ?? 'ایران'), postalCode: String(value.postalCode ?? ''), website: String(value.website ?? ''), estimatedValue: 0, status: (value.status as any) || 'active', stage: (value.stage as any) || 'new', source: String(value.source ?? ''), referralContact: String(value.referralContact ?? ''), referralDescription: String(value.referralDescription ?? ''), notes: String(value.notes ?? ''), createdAt: now, lastContactAt: now, nextFollowUpAt: now, assignedTo: String(value.assignedTo ?? users[0].id), tags: [] });
+  };
+  return <Shell title="مشتریان احتمالی" subtitle="قیف فروش از اولین تماس تا تبدیل به مشتری" action={<LeadCreateDialog open={createOpen} onOpenChange={setCreateOpen} onSave={createLead} />}>
+    <Card sx={{ p: 1 }}><DataTable rows={rows} columns={[
+      { key: 'name', label: 'نام', value: (row) => row.name || `${row.firstName ?? ''} ${row.lastName ?? ''}`.trim() || '—' },
+      { key: 'company', label: 'شرکت', value: (row) => row.company || '—' },
+      { key: 'contacts', label: 'اطلاعات تماس', value: (row) => [row.email, row.phone].filter(Boolean).join('، ') || '—' },
+      { key: 'stage', label: 'مرحله', value: (row) => row.stage ?? 'new', filterLabel: (value) => leadStages.find((stage) => stage.value === value)?.label ?? value, render: (row) => <Select size="small" value={row.stage ?? 'new'} onClick={(event) => event.stopPropagation()} onChange={(event) => { const next = event.target.value; recordLeadChange(row.id, 'stage', row.stage ?? 'new', next, user.id); leadRepository.update(row.id, { stage: next }); }} sx={{ minWidth: 145, '& .MuiSelect-select': { py: .55, px: 1 } }}>{leadStages.map((stage) => <MenuItem key={stage.value} value={stage.value}>{stage.label}</MenuItem>)}</Select> },
+      { key: 'status', label: 'وضعیت', value: (row) => leadStatusValue(row.status), filterLabel: (value) => statusLabels[value] ?? value, render: (row) => <Select size="small" value={leadStatusValue(row.status)} onClick={(event) => event.stopPropagation()} onChange={(event) => { const next = event.target.value; recordLeadChange(row.id, 'status', leadStatusValue(row.status), next, user.id); leadRepository.update(row.id, { status: next as typeof row.status }); }} sx={{ minWidth: 125, '& .MuiSelect-select': { py: .55, px: 1 } }}><MenuItem value="active">فعال</MenuItem><MenuItem value="inactive">غیرفعال</MenuItem><MenuItem value="converted">تبدیل‌شده</MenuItem><MenuItem value="rejected">ردشده</MenuItem></Select> },
+      { key: 'source', label: 'منبع', value: (row) => row.source || '—' },
+      { key: 'assignedTo', label: 'مسئول', value: (row) => users.find((user) => user.id === row.assignedTo)?.name ?? '—' },
+      { key: 'createdAt', label: 'تاریخ ایجاد', value: (row) => row.createdAt, render: (row) => formatDate(row.createdAt) },
+    ]} getRowId={(row) => row.id} onRowClick={(row) => navigate(`/leads/${row.id}`)} searchPlaceholder="جستجوی نام، شرکت، ایمیل یا تلفن..." toolbar={<CsvToolbar rows={rows} entityLabel="مشتریان احتمالی" filename="leads.csv" columns={tableColumns.leads} onImport={(items) => importFinanceRows(items, (row) => leadRepository.create({ ...leads[0], id: undefined, name: csvField(row, 'نام', 'name'), company: csvField(row, 'شرکت', 'company') || csvField(row, 'نام', 'name'), email: csvField(row, 'ایمیل', 'email'), phone: csvField(row, 'تلفن', 'phone'), estimatedValue: Number(normalizeDigits(csvField(row, 'ارزش احتمالی', 'value'))) || 0, status: 'active', stage: 'new', source: csvField(row, 'منبع', 'source') || 'سایر', notes: '', createdAt: new Date().toISOString(), lastContactAt: new Date().toISOString(), nextFollowUpAt: new Date().toISOString(), assignedTo: users[0].id, tags: [] }), ['نام', 'name'])} />} filters={[{ key: 'status', label: 'وضعیت', options: [{ value: 'active', label: 'فعال' }, { value: 'inactive', label: 'غیرفعال' }, { value: 'converted', label: 'تبدیل‌شده' }, { value: 'rejected', label: 'ردشده' }], value: (row) => row.status }, { key: 'stage', label: 'مرحله', options: leadStages.map((stage) => ({ value: stage.value, label: stage.label })), value: (row) => row.stage ?? 'new' }]} /></Card>
   </Shell>;
 }
 
 function ModernProformaPage() {
+  const [createOpen, setCreateOpen] = useCreateQueryState();
   const [rows, setRows] = useState(() => proposalRepository.list());
   useEffect(() => proposalRepository.subscribe(setRows), []);
   const fields: EntityField[] = [
@@ -99,7 +204,7 @@ function ModernProformaPage() {
     { name: 'tax', label: 'مالیات', type: 'number' },
     { name: 'validUntil', label: 'تاریخ اعتبار', type: 'date' },
   ];
-  return <Shell title="پیش‌فاکتورها" subtitle="پیشنهاد قیمت، اعتبار و تبدیل به فاکتور" action={<FinanceCreateButton title="ایجاد پیش‌فاکتور" fields={fields} onSave={(v) => proposalRepository.create({ ...proposals[0], id: undefined, number: v.number, customerId: customerForProject(v.projectId, v.customerId), projectId: v.projectId || undefined, title: v.title, amount: Math.max(0, Number(v.amount) || 0) - (Number(v.discount) || 0) + (Number(v.tax) || 0), issuedAt: new Date().toISOString(), validUntil: v.validUntil || new Date().toISOString(), status: 'draft', items: [{ productId: products[0].id, quantity: 1, unitPrice: Number(v.amount) || 0, discount: Number(v.discount) || 0, tax: Number(v.tax) || 0 }], ownerId: 'u1', updatedAt: new Date().toISOString() })} />}>
+  return <Shell title="پیش‌فاکتورها" subtitle="پیشنهاد قیمت، اعتبار و تبدیل به فاکتور" action={<FinanceCreateButton open={createOpen} onOpenChange={setCreateOpen} title="ایجاد پیش‌فاکتور" fields={fields} onSave={(v) => proposalRepository.create({ ...proposals[0], id: undefined, number: v.number, customerId: customerForProject(v.projectId, v.customerId), projectId: v.projectId || undefined, title: v.title, amount: Math.max(0, Number(v.amount) || 0) - (Number(v.discount) || 0) + (Number(v.tax) || 0), issuedAt: new Date().toISOString(), validUntil: v.validUntil || new Date().toISOString(), status: 'draft', items: [{ productId: products[0].id, quantity: 1, unitPrice: Number(v.amount) || 0, discount: Number(v.discount) || 0, tax: Number(v.tax) || 0 }], ownerId: 'u1', updatedAt: new Date().toISOString() })} />}>
     <Card sx={{ p: 1 }}><DataTable rows={rows} getRowId={(row) => row.id} searchPlaceholder="جستجوی شماره، مشتری یا پروژه..." toolbar={<CsvToolbar rows={rows} entityLabel="پیش‌فاکتورها" filename="proformas.csv" columns={[{ key: 'number', label: 'شماره', value: (row) => row.number }, { key: 'customer', label: 'مشتری', value: (row) => customerName(row.customerId) }, { key: 'project', label: 'پروژه', value: (row) => projectDisplayName(row.projectId) }, { key: 'amount', label: 'مبلغ', value: (row) => row.amount }, { key: 'status', label: 'وضعیت', value: (row) => statusLabels[row.status] ?? row.status }]} onImport={(items) => importFinanceRows(items, (row) => { const projectId = resolveProjectId(csvField(row, 'پروژه', 'projectId')); proposalRepository.create({ ...proposals[0], id: undefined, number: csvField(row, 'شماره', 'number'), customerId: customerForProject(projectId, resolveCustomerId(csvField(row, 'مشتری', 'customerId'))), projectId, title: csvField(row, 'عنوان', 'title') || 'پیشنهاد واردشده', amount: Number(normalizeDigits(csvField(row, 'مبلغ', 'amount'))) || 0, status: 'draft', issuedAt: new Date().toISOString(), validUntil: new Date().toISOString(), ownerId: users[0].id, updatedAt: new Date().toISOString(), items: [] }); }, ['شماره', 'number'])} />} columns={[
     { key: 'number', label: 'شماره', value: (row) => row.number, render: (row) => <Typography sx={{ fontWeight: 700 }}>{row.number}</Typography> },
     { key: 'customer', label: 'مشتری', value: (row) => customerName(row.customerId) },
@@ -112,6 +217,7 @@ function ModernProformaPage() {
 }
 
 function ModernInvoicesPage() {
+  const [createOpen, setCreateOpen] = useCreateQueryState();
   const navigate = useNavigate();
   const [rows, setRows] = useState(() => invoiceRepository.list());
   useEffect(() => invoiceRepository.subscribe(setRows), []);
@@ -124,7 +230,7 @@ function ModernInvoicesPage() {
     { name: 'tax', label: 'مالیات', type: 'number' },
     { name: 'dueDate', label: 'تاریخ سررسید', type: 'date' },
   ];
-  return <Shell title="فاکتورها" subtitle="صدور، پیگیری و وضعیت وصول فاکتورهای مشتریان" action={<FinanceCreateButton title="ایجاد فاکتور" fields={fields} onSave={(v) => invoiceRepository.create({ ...invoices[0], id: undefined, number: v.number, customerId: customerForProject(v.projectId, v.customerId), projectId: v.projectId || undefined, amount: Math.max(0, Number(v.amount) || 0) - (Number(v.discount) || 0) + (Number(v.tax) || 0), paidAmount: 0, status: 'issued', issuedAt: new Date().toISOString(), dueDate: v.dueDate || new Date().toISOString(), items: [{ productId: products[0].id, quantity: 1, unitPrice: Number(v.amount) || 0, discount: Number(v.discount) || 0, tax: Number(v.tax) || 0 }] })} />}>
+  return <Shell title="فاکتورها" subtitle="صدور، پیگیری و وضعیت وصول فاکتورهای مشتریان" action={<FinanceCreateButton open={createOpen} onOpenChange={setCreateOpen} title="ایجاد فاکتور" fields={fields} onSave={(v) => invoiceRepository.create({ ...invoices[0], id: undefined, number: v.number, customerId: customerForProject(v.projectId, v.customerId), projectId: v.projectId || undefined, amount: Math.max(0, Number(v.amount) || 0) - (Number(v.discount) || 0) + (Number(v.tax) || 0), paidAmount: 0, status: 'issued', issuedAt: new Date().toISOString(), dueDate: v.dueDate || new Date().toISOString(), items: [{ productId: products[0].id, quantity: 1, unitPrice: Number(v.amount) || 0, discount: Number(v.discount) || 0, tax: Number(v.tax) || 0 }] })} />}>
     <Card sx={{ p: 1 }}><DataTable rows={rows} getRowId={(row) => row.id} searchPlaceholder="جستجوی شماره فاکتور، مشتری یا پروژه..." toolbar={<CsvToolbar rows={rows} entityLabel="فاکتورها" filename="invoices.csv" columns={[{ key: 'number', label: 'شماره فاکتور', value: (row) => row.number }, { key: 'customer', label: 'مشتری', value: (row) => customerName(row.customerId) }, { key: 'project', label: 'پروژه', value: (row) => projectDisplayName(row.projectId) }, { key: 'amount', label: 'مبلغ', value: (row) => row.amount }, { key: 'paid', label: 'پرداخت‌شده', value: (row) => row.paidAmount }, { key: 'balance', label: 'مانده', value: (row) => row.amount - row.paidAmount }]} onImport={(items) => importFinanceRows(items, (row) => { const projectId = resolveProjectId(csvField(row, 'پروژه', 'projectId')); invoiceRepository.create({ ...invoices[0], id: undefined, number: csvField(row, 'شماره فاکتور', 'number'), customerId: customerForProject(projectId, resolveCustomerId(csvField(row, 'مشتری', 'customerId'))), projectId, amount: Number(normalizeDigits(csvField(row, 'مبلغ', 'amount'))) || 0, paidAmount: 0, status: 'issued', issuedAt: new Date().toISOString(), dueDate: new Date().toISOString(), items: [] }); }, ['شماره فاکتور', 'number'])} />} columns={[
     { key: 'number', label: 'شماره فاکتور', value: (row) => row.number, render: (row) => <Typography sx={{ fontWeight: 700 }}>{row.number}</Typography> },
     { key: 'customer', label: 'مشتری', value: (row) => customerName(row.customerId) },
@@ -173,7 +279,6 @@ export function LegacyProformaPage() {
   return <Shell title="پیش‌فاکتورها" subtitle="پیشنهاد قیمت، اعتبار و تبدیل به فاکتور"><StatStrip items={[{ label: 'کل پیش‌فاکتورها', value: `${proposals.length}` }, { label: 'در انتظار پاسخ', value: `${proposals.filter((x) => ['sent', 'viewed'].includes(x.status)).length}`, tone: 'warning' }, { label: 'پذیرفته‌شده', value: `${proposals.filter((x) => x.status === 'approved').length}`, tone: 'success' }, { label: 'ارزش کل', value: formatCurrency(proposals.reduce((s, x) => s + x.amount, 0)) }]} /><Filters query={query} setQuery={setQuery} status={status} setStatus={setStatus} statuses={['draft', 'sent', 'viewed', 'approved', 'rejected', 'expired']} customer={customer} setCustomer={setCustomer} /><Card><Table><TableHead><TableRow>{['شماره', 'مشتری', 'پروژه', 'تاریخ صدور', 'اعتبار تا', 'مبلغ', 'وضعیت', 'مسئول', 'آخرین بروزرسانی', 'عملیات'].map((h) => <TableCell key={h}>{h}</TableCell>)}</TableRow></TableHead><TableBody>{rows.map((x) => <TableRow hover key={x.id}><TableCell><Button size="small" onClick={() => navigate(`/proposals/${x.id}`)}>{x.number}</Button></TableCell><TableCell>{customerName(x.customerId)}</TableCell><TableCell>{projects.find((p) => p.id === x.projectId)?.name ?? '—'}</TableCell><TableCell>{formatDate(x.issuedAt)}</TableCell><TableCell>{formatDate(x.validUntil)}</TableCell><TableCell>{formatCurrency(x.amount)}</TableCell><TableCell>{statusChip(x.status)}</TableCell><TableCell>{users.find((u) => u.id === x.ownerId)?.name}</TableCell><TableCell>{formatRelative(x.updatedAt)}</TableCell><TableCell><Button size="small" onClick={() => navigate(`/invoices/new?proposal=${x.id}`)}>تبدیل به فاکتور</Button></TableCell></TableRow>)}</TableBody></Table></Card></Shell>;
 }
 export function LeadsPage() { return <ModernLeadsPage />; }
-export function ProposalsPage() { return <ModernProformaPage />; }
 
 export function LegacyInvoicesPage() {
   const [params] = useSearchParams(); const navigate = useNavigate(); const [query, setQuery] = useState(''); const [status, setStatus] = useState('all'); const [customer, setCustomer] = useState('all');
@@ -189,7 +294,10 @@ export function LegacyPaymentsPage() {
   return <Shell title="پرداخت‌ها" subtitle="دفتر دریافت‌ها و تطبیق با فاکتورهای صادرشده"><StatStrip items={[{ label: 'پرداخت این ماه', value: formatCurrency(payments.reduce((s, x) => s + x.amount, 0)), tone: 'success' }, { label: 'تاییدشده', value: `${payments.filter((x) => x.status === 'تایید شده').length}` }, { label: 'در انتظار تایید', value: `${payments.filter((x) => x.status === 'در انتظار تایید').length}`, tone: 'warning' }]} /><Filters query={query} setQuery={setQuery} status={status} setStatus={setStatus} statuses={paymentStatuses} methods={['انتقال بانکی', 'کارت', 'چک', 'نقدی', 'درگاه اینترنتی', 'سایر']} /><Card><Table><TableHead><TableRow>{['شماره پرداخت', 'مشتری', 'فاکتور', 'پروژه', 'مبلغ', 'تاریخ', 'حساب مقصد', 'روش پرداخت', 'شماره پیگیری', 'وضعیت'].map((h) => <TableCell key={h}>{h}</TableCell>)}</TableRow></TableHead><TableBody>{rows.map((x) => <TableRow hover key={x.id}><TableCell sx={{ fontWeight: 700 }}>{x.receiptNumber}</TableCell><TableCell>{customerName(x.customerId)}</TableCell><TableCell>{invoices.find((i) => i.id === x.invoiceId)?.number}</TableCell><TableCell>{projects.find((p) => p.id === x.projectId)?.name ?? '—'}</TableCell><TableCell>{formatCurrency(x.amount)}</TableCell><TableCell>{formatDate(x.paidAt)}</TableCell><TableCell>{bankAccounts.find((b) => b.id === x.bankAccountId)?.bankName ?? '—'}</TableCell><TableCell>{x.method}</TableCell><TableCell>{x.reference}</TableCell><TableCell><Chip size="small" color={x.status === 'تایید شده' ? 'success' : x.status === 'برگشت خورده' ? 'error' : 'warning'} label={x.status} /></TableCell></TableRow>)}</TableBody></Table></Card></Shell>;
 }
 
-export function InvoicesPage() { return <ModernInvoicesPage />; }
+export function InvoicesPage() {
+  const [params] = useSearchParams();
+  return params.get('view') === 'proforma' ? <ModernProformaPage /> : <ModernInvoicesPage />;
+}
 export function PaymentsPage() { return <ModernPaymentsPage />; }
 
 function ModernProductsPage() {
@@ -217,6 +325,7 @@ function ModernProductsPage() {
 }
 
 function ModernContractsPage() {
+  const [createOpen, setCreateOpen] = useCreateQueryState();
   const [rows, setRows] = useState(() => contractRepository.list());
   useEffect(() => contractRepository.subscribe(setRows), []);
   const fields: EntityField[] = [
@@ -230,7 +339,7 @@ function ModernContractsPage() {
     { name: 'paymentTerms', label: 'نحوه پرداخت' },
     { name: 'customerVisible', label: 'قابل مشاهده برای مشتری', type: 'checkbox' },
   ];
-  return <Shell title="قراردادها" subtitle="تعهدات تجاری، تمدید و ارتباط قرارداد با فاکتور و اقساط" action={<FinanceCreateButton title="ایجاد قرارداد" fields={fields} onSave={(v) => contractRepository.create({ ...contracts[0], id: undefined, number: v.number, title: v.title, customerId: customerForProject(v.projectId, v.customerId), projectId: v.projectId || undefined, amount: Number(v.amount) || 0, startDate: v.startDate || new Date().toISOString(), endDate: v.endDate || new Date().toISOString(), paymentTerms: v.paymentTerms || 'توافقی', status: 'draft', ownerId: users[0].id, renewal: false, customerVisible: v.customerVisible === 'true' })} />}>
+  return <Shell title="قراردادها" subtitle="تعهدات تجاری، تمدید و ارتباط قرارداد با فاکتور و اقساط" action={<FinanceCreateButton open={createOpen} onOpenChange={setCreateOpen} title="ایجاد قرارداد" fields={fields} onSave={(v) => contractRepository.create({ ...contracts[0], id: undefined, number: v.number, title: v.title, customerId: customerForProject(v.projectId, v.customerId), projectId: v.projectId || undefined, amount: Number(v.amount) || 0, startDate: v.startDate || new Date().toISOString(), endDate: v.endDate || new Date().toISOString(), paymentTerms: v.paymentTerms || 'توافقی', status: 'draft', ownerId: users[0].id, renewal: false, customerVisible: v.customerVisible === 'true' })} />}>
     <Card sx={{ p: 1 }}><DataTable rows={rows} getRowId={(row) => row.id} searchPlaceholder="جستجوی شماره، عنوان، مشتری یا پروژه..." toolbar={<CsvToolbar rows={rows} entityLabel="قراردادها" filename="contracts.csv" columns={[{ key: 'number', label: 'شماره قرارداد', value: (row) => row.number }, { key: 'title', label: 'عنوان', value: (row) => row.title }, { key: 'customer', label: 'مشتری', value: (row) => customerName(row.customerId) }, { key: 'project', label: 'پروژه', value: (row) => projectDisplayName(row.projectId) }, { key: 'amount', label: 'مبلغ', value: (row) => row.amount }, { key: 'status', label: 'وضعیت', value: (row) => statusLabels[row.status] ?? row.status }]} onImport={(items) => importFinanceRows(items, (row) => { const projectId = resolveProjectId(csvField(row, 'پروژه', 'project', 'projectId')); const customerId = csvField(row, 'مشتری', 'customer', 'customerId') || (projectId ? projects.find((project) => project.id === projectId)?.customerId : undefined) || customers[0].id; return contractRepository.create({ ...contracts[0], id: undefined, number: csvField(row, 'شماره قرارداد', 'number'), title: csvField(row, 'عنوان', 'title') || 'قرارداد واردشده', customerId, projectId, amount: Number(normalizeDigits(csvField(row, 'مبلغ', 'amount'))) || 0, startDate: new Date().toISOString(), endDate: new Date().toISOString(), status: 'draft', ownerId: users[0].id, paymentTerms: 'توافقی', renewal: false }); }, ['شماره قرارداد', 'number'])} />} columns={[
     { key: 'number', label: 'شماره قرارداد', value: (row) => row.number, render: (row) => <Typography sx={{ fontWeight: 700 }}>{row.number}</Typography> },
     { key: 'title', label: 'عنوان', value: (row) => row.title },
@@ -335,4 +444,3 @@ function DocumentDetail({ kind, id }: { kind: 'invoice' | 'proposal'; id: string
   );
 }
 export function InvoiceDetailPage() { const { id = '' } = useParams(); return <DocumentDetail kind="invoice" id={id} />; }
-export function ProposalDetailPage() { const { id = '' } = useParams(); return <DocumentDetail kind="proposal" id={id} />; }

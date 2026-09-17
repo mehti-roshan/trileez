@@ -21,6 +21,7 @@ export function taskContext(taskId: string): RelationResult<{ task: Task; projec
 
 export function canPerform(user: User, permissionKey: string) {
   if (user.role === 'admin') return true;
+  if (user.role === 'customer') return false;
   const managerPermissions = ['project:view', 'project:create', 'project:update', 'task:create', 'task:update', 'finance:view', 'hr:view', 'document:view'];
   const memberPermissions = ['project:view', 'task:create', 'task:update', 'document:view'];
   return (user.role === 'manager' ? managerPermissions : memberPermissions).includes(permissionKey);

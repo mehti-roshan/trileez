@@ -14,7 +14,7 @@ export default function AppLayout() {
       </Box>
       <Box sx={{ flex: '1 1 auto', minWidth: 0, width: 'auto', maxWidth: '100%', display: 'flex', flexDirection: 'column', direction: 'rtl', overflowX: 'hidden' }}>
         <Header onMenu={() => setMobileOpen(true)} />
-        <Box component="main" sx={{ p: { xs: 1.25, sm: 2, md: 3 }, flex: 1, minWidth: 0, width: '100%', maxWidth: '100%', overflowX: 'hidden' }}>
+        <Box component="main" sx={{ p: { xs: 1.5, sm: 2.5, md: 3.5 }, flex: 1, minWidth: 0, width: '100%', maxWidth: '100%', overflowX: 'hidden', '& > *': { minWidth: 0 } }}>
           <Outlet />
         </Box>
       </Box>

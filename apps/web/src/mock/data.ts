@@ -11,13 +11,15 @@ import type {
   Ticket,
   User,
   Lead,
+  LeadActivity,
+  LeadProposalVersion,
+  LeadContractVersion,
   Product,
   Proposal,
   Invoice,
   Payment,
   Contract,
   Installment,
-  ResaleOpportunity,
   Goal,
   TimesheetEntry,
   ActivityLog,
@@ -25,8 +27,6 @@ import type {
   AttendanceRecord,
   LeaveRequest,
   Mission,
-  PerformanceReview,
-  EmployeeDocument,
   PayrollRecord,
   JobOpening,
   Candidate,
@@ -34,13 +34,16 @@ import type {
   BankAccount,
   Expense,
   ProjectMember,
+  ProjectRoleTemplate,
+  ProjectRole,
+  ProjectActivity,
+  ProjectAccess,
   TaskLabel,
   PerformancePeriod,
   PerformancePointReason,
   PerformancePointEvent,
   PersonnelEvent,
   EmployeeContract,
-  DocumentCategory,
   BusinessDocument,
   Conversation,
   Message,
@@ -54,7 +57,10 @@ import type {
   MonitoringAuditEvent,
   TicketReply,
   TicketActivity,
+  RoleDefinition,
+  WageRecord,
 } from '../types';
+import { normalizeCandidateWorkflow } from '../utils/recruitment.ts';
 
 export const currentUser: User = {
   id: 'u1',
@@ -62,6 +68,7 @@ export const currentUser: User = {
   email: 'sara.mohammadi@trileez.ir',
   role: 'admin',
   status: 'online',
+  isActive: true,
   title: 'مدیر عملیات',
 };
 
@@ -72,13 +79,20 @@ export const organizations: Organization[] = [
 
 export const users: User[] = [
   currentUser,
-  { id: 'u2', name: 'علی رضایی', email: 'ali.rezaei@trileez.ir', role: 'manager', status: 'online', title: 'مدیر پروژه' },
-  { id: 'u3', name: 'مریم حسینی', email: 'maryam.hosseini@trileez.ir', role: 'member', status: 'away', title: 'طراح محصول' },
-  { id: 'u4', name: 'حسین کریمی', email: 'hossein.karimi@trileez.ir', role: 'member', status: 'online', title: 'توسعه‌دهنده' },
-  { id: 'u5', name: 'فاطمه نوری', email: 'fatemeh.nouri@trileez.ir', role: 'member', status: 'offline', title: 'پشتیبانی مشتریان' },
-  { id: 'u6', name: 'رضا عباسی', email: 'reza.abbasi@trileez.ir', role: 'manager', status: 'online', title: 'سرپرست مانیتورینگ' },
-  { id: 'u7', name: 'نگار صالحی', email: 'negar.salehi@trileez.ir', role: 'member', status: 'away', title: 'کارشناس فروش' },
-  { id: 'u8', name: 'امیر جعفری', email: 'amir.jafari@trileez.ir', role: 'member', status: 'online', title: 'مهندس زیرساخت' },
+  { id: 'u2', name: 'علی رضایی', email: 'ali.rezaei@trileez.ir', role: 'manager', status: 'online', isActive: true, title: 'مدیر پروژه' },
+  { id: 'u3', name: 'مریم حسینی', email: 'maryam.hosseini@trileez.ir', role: 'member', status: 'away', isActive: true, title: 'طراح محصول' },
+  { id: 'u4', name: 'حسین کریمی', email: 'hossein.karimi@trileez.ir', role: 'member', status: 'online', isActive: true, title: 'توسعه‌دهنده' },
+  { id: 'u5', name: 'فاطمه نوری', email: 'fatemeh.nouri@trileez.ir', role: 'member', status: 'offline', isActive: false, title: 'پشتیبانی مشتریان' },
+  { id: 'u6', name: 'رضا عباسی', email: 'reza.abbasi@trileez.ir', role: 'manager', status: 'online', isActive: true, title: 'سرپرست مانیتورینگ' },
+  { id: 'u7', name: 'نگار صالحی', email: 'negar.salehi@trileez.ir', role: 'member', status: 'away', isActive: true, title: 'کارشناس فروش' },
+  { id: 'u8', name: 'امیر جعفری', email: 'amir.jafari@trileez.ir', role: 'member', status: 'online', isActive: true, title: 'مهندس زیرساخت' },
+];
+
+export const roleDefinitions: RoleDefinition[] = [
+  { id: 'admin', label: 'مدیر سامانه', permissions: ['project:view', 'project:create', 'project:update', 'task:view', 'task:create', 'task:update', 'finance:view', 'finance:pay', 'hr:view', 'hr:manage-users', 'reports:view', 'document:view'] },
+  { id: 'manager', label: 'مدیر / سرپرست', permissions: ['project:view', 'project:create', 'project:update', 'task:view', 'task:create', 'task:update', 'finance:view', 'hr:view', 'reports:view', 'document:view'] },
+  { id: 'member', label: 'کارمند / همکار', permissions: ['project:view', 'task:view', 'task:create', 'task:update', 'document:view'] },
+  { id: 'customer', label: 'کاربر مشتری', permissions: [] },
 ];
 
 export const projects: Project[] = [
@@ -89,6 +103,8 @@ export const projects: Project[] = [
     customerId: 'c1',
     managerId: 'u2',
     budget: 860_000_000,
+    grade: 92,
+    tags: ['توسعه نرم‌افزار', 'فروش', 'طراحی رابط کاربری'],
     status: 'active',
     progress: 68,
     startDate: '2026-03-12',
@@ -105,6 +121,8 @@ export const projects: Project[] = [
     customerId: 'c7',
     managerId: 'u6',
     budget: 1_240_000_000,
+    grade: 86,
+    tags: ['زیرساخت', 'توسعه نرم‌افزار'],
     status: 'active',
     progress: 42,
     startDate: '2026-04-01',
@@ -121,6 +139,8 @@ export const projects: Project[] = [
     customerId: 'c2',
     managerId: 'u5',
     budget: 420_000_000,
+    grade: 74,
+    tags: ['پشتیبانی', 'تولید محتوا'],
     status: 'active',
     progress: 81,
     startDate: '2026-02-20',
@@ -137,6 +157,8 @@ export const projects: Project[] = [
     customerId: 'c4',
     managerId: 'u2',
     budget: 275_000_000,
+    grade: 58,
+    tags: ['طراحی وب‌سایت', 'طراحی رابط کاربری'],
     status: 'on_hold',
     progress: 24,
     startDate: '2026-06-01',
@@ -153,6 +175,8 @@ export const projects: Project[] = [
     customerId: 'c5',
     managerId: 'u2',
     budget: 980_000_000,
+    grade: 81,
+    tags: ['طراحی وب‌سایت', 'سئو'],
     status: 'completed',
     progress: 100,
     startDate: '2025-11-10',
@@ -202,13 +226,13 @@ tasks.forEach((task, index) => Object.assign(task, {
 }));
 
 export const customers: Customer[] = [
-  { id: 'c1', name: 'مهندس کامران شریفی', company: 'صنایع سپهر ایرانیان', email: 'sharifi@sepehr.co', phone: '۰۲۱-۴۴۵۵۶۶۷۷', status: 'active', value: 860_000_000, lastContact: hoursAgo(18), assignedTo: 'u7' },
-  { id: 'c2', name: 'خانم لیلا توکلی', company: 'داروسازی نیکان', email: 'tavakoli@nikan.ir', phone: '۰۲۱-۸۸۷۷۶۶۵۵', status: 'active', value: 420_000_000, lastContact: daysAgo(2), assignedTo: 'u7' },
-  { id: 'c3', name: 'آقای بهرام یوسفی', company: 'لجستیک آریابرگ', email: 'yousefi@aryabarg.com', phone: '۰۳۱-۳۲۲۲۱۱۰۰', status: 'lead', value: 150_000_000, lastContact: daysAgo(5), assignedTo: 'u2' },
-  { id: 'c4', name: 'دکتر ناهید امینی', company: 'کلینیک هوشمند زندگی', email: 'amini@zendegi.clinic', phone: '۰۲۱-۲۲۰۰۱۱۲۲', status: 'active', value: 275_000_000, lastContact: hoursAgo(40), assignedTo: 'u5' },
-  { id: 'c5', name: 'مهندس جواد مرادی', company: 'پتروشیمی فارس جنوب', email: 'moradi@fars-south.ir', phone: '۰۷۱-۳۳۴۴۵۵۶۶', status: 'inactive', value: 980_000_000, lastContact: daysAgo(21), assignedTo: 'u2' },
-  { id: 'c6', name: 'خانم شیدا کاظمی', company: 'آموزشگاه ابرآسا', email: 'kazemi@abrasa.ir', phone: '۰۲۱-۶۶۵۵۴۴۳۳', status: 'lead', value: 95_000_000, lastContact: daysAgo(1), assignedTo: 'u7' },
-  { id: 'c7', name: 'آقای پیمان رستمی', company: 'بانک توسعه تعاون شعبه مرکزی', email: 'rostami@ttbank.ir', phone: '۰۲۱-۸۸۸۸۰۰۰۰', status: 'active', value: 1_240_000_000, lastContact: hoursAgo(6), assignedTo: 'u1' },
+  { id: 'c1', entityType: 'company', name: 'صنایع سپهر ایرانیان', company: 'صنایع سپهر ایرانیان', email: 'sharifi@sepehr.co', phone: '۰۹۱۲۱۲۳۴۵۲۰', groups: ['مشتریان کلیدی', 'سازمانی'], currency: 'IRR', vatRegistrationNumber: '۴۱۱۱۷۶۳۹۵۸۳۱', status: 'active', value: 860_000_000, lastContact: hoursAgo(18), assignedTo: 'u7' },
+  { id: 'c2', entityType: 'company', name: 'داروسازی نیکان', company: 'داروسازی نیکان', email: 'tavakoli@nikan.ir', phone: '۰۹۱۲۱۲۳۴۵۲۱', groups: ['سازمانی'], currency: 'IRR', vatRegistrationNumber: '۴۱۱۱۷۶۳۹۵۸۴۰', status: 'active', value: 420_000_000, lastContact: daysAgo(2), assignedTo: 'u7' },
+  { id: 'c3', entityType: 'person', name: 'بهرام یوسفی', company: 'بهرام یوسفی', email: 'yousefi@example.com', phone: '۰۹۱۳۱۲۳۴۵۲۲', groups: ['همکار تجاری'], currency: 'IRR', status: 'lead', value: 150_000_000, lastContact: daysAgo(5), assignedTo: 'u2' },
+  { id: 'c4', entityType: 'company', name: 'کلینیک هوشمند زندگی', company: 'کلینیک هوشمند زندگی', email: 'amini@zendegi.clinic', phone: '۰۹۱۲۱۲۳۴۵۲۳', groups: ['مشتریان کلیدی'], currency: 'IRR', vatRegistrationNumber: '۴۱۱۱۷۶۳۹۵۸۵۸', status: 'active', value: 275_000_000, lastContact: hoursAgo(40), assignedTo: 'u5' },
+  { id: 'c5', entityType: 'company', name: 'پتروشیمی فارس جنوب', company: 'پتروشیمی فارس جنوب', email: 'moradi@fars-south.ir', phone: '۰۹۱۷۱۲۳۴۵۲۴', groups: ['سازمانی'], currency: 'IRR', vatRegistrationNumber: '۴۱۱۱۷۶۳۹۵۸۶۶', status: 'inactive', value: 980_000_000, lastContact: daysAgo(21), assignedTo: 'u2' },
+  { id: 'c6', entityType: 'person', name: 'شیدا کاظمی', company: 'شیدا کاظمی', email: 'kazemi@example.com', phone: '۰۹۱۲۱۲۳۴۵۲۵', groups: ['داخلی'], currency: 'USD', status: 'lead', value: 95_000_000, lastContact: daysAgo(1), assignedTo: 'u7' },
+  { id: 'c7', entityType: 'company', name: 'بانک توسعه تعاون شعبه مرکزی', company: 'بانک توسعه تعاون شعبه مرکزی', email: 'rostami@ttbank.ir', phone: '۰۹۱۲۱۲۳۴۵۲۶', groups: ['مشتریان کلیدی', 'سازمانی'], currency: 'IRR', vatRegistrationNumber: '۴۱۱۱۷۶۳۹۵۸۷۴', status: 'active', value: 1_240_000_000, lastContact: hoursAgo(6), assignedTo: 'u1' },
 ];
 customers.forEach((customer, index) => Object.assign(customer, {
   nationalCode: `۱۴۰۰${(1200 + index).toString()}`,
@@ -340,6 +364,14 @@ export const leads: Lead[] = [
   { id: 'l4', name: 'مهدی رستگار', company: 'آتیه سازان', email: 'rastgar@atiehsazan.ir', phone: '۰۲۱-۸۸۲۲۱۱۴۴', estimatedValue: 95_000_000, tags: ['کوچک'], assignedTo: 'u7', status: 'converted', source: 'ارجاع', lastContactAt: daysAgo(9), nextFollowUpAt: daysFromNow(10), notes: 'به مشتری صنایع سپهر تبدیل شد.', createdAt: daysAgo(40) },
 ];
 
+export const leadActivities: LeadActivity[] = [
+  { id: 'la-1', leadId: 'l1', type: 'call', title: 'تماس با مشتری احتمالی', description: 'درباره نیازهای تیم مالی و زمان‌بندی اجرای CRM گفتگو شد.', occurredAt: hoursAgo(8), actorId: 'u7' },
+  { id: 'la-2', leadId: 'l1', type: 'meeting', title: 'جلسه دمو', description: 'جلسه معرفی محصول با تیم مالی برگزار شد و درخواست پیشنهاد ارسال شد.', occurredAt: daysAgo(2), actorId: 'u7' },
+  { id: 'la-3', leadId: 'l2', type: 'follow_up', title: 'پیگیری اطلاعات', description: 'منتظر دریافت تعداد کاربران و ساختار سازمانی مشتری هستیم.', occurredAt: daysAgo(3), actorId: 'u2' },
+];
+export const leadProposalVersions: LeadProposalVersion[] = [];
+export const leadContractVersions: LeadContractVersion[] = [];
+
 export const products: Product[] = [
   { id: 'pr1', name: 'اشتراک سازمانی تری‌لیز', sku: 'TRI-ENT-12', category: 'اشتراک نرم‌افزار', type: 'اشتراک', unit: 'کاربر/ماه', price: 2_400_000, taxRate: 10, stock: 980, active: true, updatedAt: daysAgo(2) },
   { id: 'pr2', name: 'راه‌اندازی و استقرار', sku: 'TRI-SETUP', category: 'خدمات حرفه‌ای', type: 'خدمات', unit: 'پروژه', price: 180_000_000, taxRate: 10, stock: 0, active: true, updatedAt: daysAgo(6) },
@@ -404,26 +436,6 @@ export const expenses: Expense[] = [
   { id: 'ex8', title: 'لوازم اداری', category: 'تجهیزات اداری', supplierId: 'sup3', amount: 9_600_000, date: daysAgo(25), status: 'approved', paymentMethod: 'انتقال بانکی', bankAccountId: 'bank3', description: 'تجهیزات مصرفی دفتر.' },
 ];
 
-export const resaleOpportunities: ResaleOpportunity[] = Array.from({ length: 15 }, (_, index) => {
-  const customer = customers[index % customers.length];
-  const product = products[(index + 2) % products.length];
-  const statuses: ResaleOpportunity['status'][] = ['identified', 'following', 'proposal', 'negotiating', 'won', 'lost'];
-  return {
-    id: `rs${index + 1}`,
-    customerId: customer.id,
-    productId: product.id,
-    previousPurchase: index % 2 ? 'اشتراک سازمانی سال ۱۴۰۴' : 'پشتیبانی استاندارد',
-    opportunityTitle: index % 2 ? `افزودن ${product.name}` : `ارتقای قرارداد ${customer.company}`,
-    estimatedValue: 45_000_000 + index * 12_500_000,
-    probability: [35, 55, 70, 80, 100, 15][index % 6],
-    assignedTo: users[(index + 1) % users.length].id,
-    status: statuses[index % statuses.length],
-    nextFollowUp: daysFromNow((index % 10) - 2),
-    notes: 'فرصت بر اساس خرید قبلی و ظرفیت استفاده شناسایی شده است.',
-    createdAt: daysAgo(index + 1),
-  };
-});
-
 export const goals: Goal[] = [
   { id: 'g1', title: 'افزایش فروش ماهانه', ownerId: 'u2', department: 'فروش', period: 'شهریور ۱۴۰۵', target: 1_000_000_000, current: 720_000_000, progress: 72, status: 'in_progress', dueDate: '2026-09-30', description: 'رشد فروش قراردادهای سازمانی و تمدیدها.', createdAt: daysAgo(20) },
   { id: 'g2', title: 'جذب ۲۰ مشتری جدید', ownerId: 'u7', department: 'فروش', period: 'فصل تابستان', target: 20, current: 14, progress: 70, status: 'in_progress', dueDate: '2026-09-31', description: 'افزایش ورودی قیف و تبدیل سرنخ‌های واجد شرایط.', createdAt: daysAgo(24) },
@@ -442,7 +454,8 @@ export const timesheets: TimesheetEntry[] = Array.from({ length: 40 }, (_, index
   const projectTasks = tasks.filter((task) => task.projectId === project.id);
   const task = projectTasks[index % Math.max(projectTasks.length, 1)] ?? tasks[index % tasks.length];
   const employeeId = task.assigneeId;
-  const statuses: TimesheetEntry['status'][] = ['approved', 'rejected'];
+  const statuses: TimesheetEntry['status'][] = ['approved', 'pending_review', 'review_again', 'suspended', 'rejected'];
+  const billingStatuses: NonNullable<TimesheetEntry['billingStatus']>[] = ['paid', 'purchase_invoice_registered', 'purchase_invoice_queued', 'payment_queued', 'suspended'];
   return {
     id: `ts${index + 1}`,
     employeeId,
@@ -455,13 +468,14 @@ export const timesheets: TimesheetEntry[] = Array.from({ length: 40 }, (_, index
     hourlyRate: 180_000 + (index % 5) * 35_000,
     calculatedCost: (2 + (index % 7)) * (180_000 + (index % 5) * 35_000),
     billable: index % 4 !== 0,
-    billingStatus: index % 5 === 0 ? 'paid' : 'unpaid',
+    billingStatus: statuses[index % statuses.length] === 'approved' ? 'payment_queued' : billingStatuses[index % billingStatuses.length],
     description: index % 2 ? 'پیاده‌سازی و هماهنگی با تیم پروژه' : 'جلسه، تحلیل و ثبت خروجی روزانه',
     status: statuses[index % statuses.length],
     customerVisible: Boolean(task.customerVisible && index % 3 !== 0),
     createdAt: daysAgo(index % 18),
   };
 });
+export const wageRecords: WageRecord[] = [];
 tasks.forEach((task) => {
   task.loggedHours = timesheets.filter((entry) => entry.taskId === task.id).reduce((sum, entry) => sum + entry.hours, 0);
 });
@@ -508,6 +522,8 @@ export const employees: Employee[] = [
 const employeeIds = employees.map((employee) => employee.id);
 employees.forEach((employee, index) => {
   employee.hourlyRate = 200_000 + (index % 5) * 25_000;
+  employee.hasGuarantee = index % 3 !== 1;
+  employee.guaranteeAmount = employee.hasGuarantee ? 150_000_000 + (index % 4) * 50_000_000 : undefined;
   employee.hourlyRateHistory = [
     { id: `rate-${employee.id}-current`, employeeId: employee.id, hourlyRate: employee.hourlyRate, effectiveFrom: '2026-01-01', source: 'قرارداد جاری' },
     ...(index % 3 === 0 ? [{ id: `rate-${employee.id}-old`, employeeId: employee.id, hourlyRate: Math.max(150_000, employee.hourlyRate - 25_000), effectiveFrom: '2025-01-01', effectiveTo: '2025-12-31', source: 'قرارداد قبلی' }] : []),
@@ -521,8 +537,6 @@ export const attendance: AttendanceRecord[] = Array.from({ length: 56 }, (_, ind
 const leaveTypes: LeaveRequest['leaveType'][] = ['annual', 'sick', 'unpaid', 'hourly', 'other'];
 export const leaveRequests: LeaveRequest[] = Array.from({ length: 18 }, (_, index) => ({ id: `leave-${index + 1}`, employeeId: employeeIds[index % employeeIds.length], leaveType: leaveTypes[index % leaveTypes.length], startDate: daysFromNow((index % 12) - 5).slice(0, 10), endDate: daysFromNow((index % 12) - 3).slice(0, 10), days: index % 3 + 1, reason: index % 2 ? 'امور شخصی و خانوادگی' : 'استراحت و بازیابی انرژی', status: (['pending', 'approved', 'approved', 'rejected'] as LeaveRequest['status'][])[index % 4], approverId: 'u1', createdAt: daysAgo(index + 1) }));
 export const missions: Mission[] = Array.from({ length: 10 }, (_, index) => ({ id: `mission-${index + 1}`, employeeId: employeeIds[(index + 2) % employeeIds.length], destination: ['اصفهان', 'مشهد', 'تهران', 'شیراز'][index % 4], purpose: index % 2 ? 'جلسه با مشتری' : 'استقرار و آموزش تیم', startDate: daysFromNow((index % 10) - 3).slice(0, 10), endDate: daysFromNow((index % 10) - 1).slice(0, 10), days: 2, estimatedCost: 8_000_000 + index * 1_500_000, actualCost: index % 3 === 0 ? 0 : 7_500_000 + index * 1_200_000, status: (['pending', 'approved', 'in_progress', 'completed', 'rejected'] as Mission['status'][])[index % 5], approverId: 'u1', description: 'ثبت ماموریت مرتبط با پروژه و مشتری سازمانی' }));
-export const performanceReviews: PerformanceReview[] = Array.from({ length: 12 }, (_, index) => ({ id: `review-${index + 1}`, employeeId: employeeIds[index % employeeIds.length], reviewerId: index % 3 === 0 ? 'u1' : 'u2', period: index % 2 ? 'فصل دوم ۱۴۰۵' : 'نیمه اول ۱۴۰۵', overallScore: 60 + (index % 5) * 8, goalIds: goals.slice(index % 5, index % 5 + 2).map((goal) => goal.id), strengths: 'تعهد بالا، همکاری بین‌تیمی و پیگیری مناسب خروجی‌ها', improvements: 'مستندسازی منظم‌تر و برنامه‌ریزی ظرفیت', managerComment: 'روند عملکرد مثبت است و برای سطح بعدی آمادگی دارد.', status: (['pending', 'in_progress', 'completed'] as PerformanceReview['status'][])[index % 3], createdAt: daysAgo(index * 4) }));
-export const employeeDocuments: EmployeeDocument[] = Array.from({ length: 32 }, (_, index) => ({ id: `doc-${index + 1}`, employeeId: employeeIds[index % employeeIds.length], name: ['قرارداد کاری', 'کارت ملی', 'مدرک تحصیلی', 'رزومه', 'گواهی دوره'][index % 5], type: ['قرارداد', 'مدرک هویتی', 'مدرک تحصیلی', 'رزومه', 'گواهی'][index % 5], uploadedAt: daysAgo(index + 2).slice(0, 10), expiresAt: index % 4 === 0 ? daysFromNow(index - 15).slice(0, 10) : undefined, status: index % 4 === 0 ? (index % 8 === 0 ? 'expired' : 'expiring') : index % 5 === 0 ? 'no_expiry' : 'valid', fileSize: `${400 + index * 35} کیلوبایت` }));
 export const payroll: PayrollRecord[] = Array.from({ length: 24 }, (_, index) => { const employee = employees[index % employees.length]; const overtime = (index % 4) * 2_500_000; const benefits = 4_000_000 + (index % 3) * 1_000_000; const deductions = 2_000_000 + (index % 2) * 1_000_000; const tax = Math.round((employee.salary + overtime + benefits) * .08); return { id: `payroll-${index + 1}`, employeeId: employee.id, month: index % 2 ? 'شهریور ۱۴۰۵' : 'مرداد ۱۴۰۵', baseSalary: employee.salary, overtime, benefits, deductions, tax, netSalary: employee.salary + overtime + benefits - deductions - tax, status: (['draft', 'approved', 'paid'] as PayrollRecord['status'][])[index % 3], paidAt: index % 3 === 2 ? daysAgo(index).slice(0, 10) : undefined }; });
 export const jobOpenings: JobOpening[] = [
   { id: 'job1', title: 'توسعه‌دهنده ارشد React', department: 'فنی', employmentType: 'full_time', openings: 2, applicants: 18, status: 'open', postedAt: daysAgo(12).slice(0, 10) },
@@ -531,7 +545,36 @@ export const jobOpenings: JobOpening[] = [
   { id: 'job4', title: 'طراح محصول', department: 'محصول', employmentType: 'project', openings: 1, applicants: 9, status: 'paused', postedAt: daysAgo(30).slice(0, 10) },
   { id: 'job5', title: 'کارآموز منابع انسانی', department: 'منابع انسانی', employmentType: 'intern', openings: 1, applicants: 7, status: 'filled', postedAt: daysAgo(50).slice(0, 10) },
 ];
-export const candidates: Candidate[] = Array.from({ length: 22 }, (_, index) => ({ id: `candidate-${index + 1}`, fullName: ['سعید احمدی', 'نگین کاظمی', 'پویان مرادی', 'مینا رستمی', 'هومن اکبری'][index % 5], jobId: jobOpenings[index % jobOpenings.length].id, email: `candidate${index + 1}@example.ir`, phone: `۰۹۱۲۳۴۵۶${(10 + index).toString().padStart(2, '۰')}`, stage: (['resume', 'screening', 'interview', 'final', 'offer', 'hired', 'rejected'] as Candidate['stage'][])[index % 7], score: 60 + (index % 5) * 8, ownerId: employeeIds[(index + 1) % employeeIds.length], appliedAt: daysAgo(index + 1).slice(0, 10) }));
+const candidateStages: Candidate['stage'][] = ['resume_sent', 'form_filling', 'initial_meeting', 'project_manager_intro', 'secondary_meeting', 'follow_up_call', 'candidate_message', 'no_response', 'follow_up_again', 'project_mismatch', 'rejected_by_us', 'rejected_by_candidate', 'unavailable'];
+const candidateStatuses: Candidate['status'][] = ['open', 'pending', 'open', 'selected', 'lost', 'closed', 'mismatch', 'terminating'];
+const candidateSources: Candidate['source'][] = ['jobinja', 'divar', 'ponisha', 'other'];
+const candidateMeetingResults: Candidate['meetings'][number]['result'][] = ['successful', 'next_meeting_needed', 'more_review_needed', 'pending_decision', 'selected', 'rejected', 'no_show', 'cancelled'];
+export const candidates: Candidate[] = Array.from({ length: 22 }, (_, index) => {
+  const stage = candidateStages[index % candidateStages.length];
+  const workflow = normalizeCandidateWorkflow(stage, candidateStatuses[index % candidateStatuses.length]);
+  const status = workflow.status;
+  const source = candidateSources[index % candidateSources.length];
+  const appliedAt = daysAgo(index + 1).slice(0, 10);
+  return {
+    id: `candidate-${index + 1}`,
+    fullName: ['سعید احمدی', 'نگین کاظمی', 'پویان مرادی', 'مینا رستمی', 'هومن اکبری', 'پرستو زمانی', 'امیرحسین کاوه'][index % 7],
+    jobId: jobOpenings[index % jobOpenings.length].id,
+    email: `candidate${index + 1}@example.ir`,
+    phone: `۰۹۱۲۳۴۵۶${String(10 + index).padStart(2, '0')}`,
+    stage: workflow.stage,
+    status,
+    source,
+    otherSource: source === 'other' ? 'معرفی در رویداد تخصصی' : undefined,
+    lossReason: status === 'lost' || status === 'closed' ? (['long_process', 'financial_mismatch', 'work_conditions_mismatch', 'poor_communication', 'employed_elsewhere', 'no_response'] as NonNullable<Candidate['lossReason']>[])[index % 6] : undefined,
+    grade: 55 + (index % 6) * 8,
+    ownerId: employeeIds[(index + 1) % employeeIds.length],
+    description: index % 2 ? 'سابقه کاری مرتبط دارد و برای ادامه فرایند نیازمند پیگیری است.' : 'رزومه اولیه بررسی شده و اطلاعات تکمیلی در جلسه ثبت می‌شود.',
+    resume: index % 4 === 0 ? undefined : { id: `candidate-resume-${index + 1}`, name: `resume-candidate-${index + 1}.pdf`, type: 'application/pdf', size: `${180 + index * 12} کیلوبایت`, url: `/mock/resumes/resume-sample-${index % 7 + 1}.pdf`, uploadedBy: 'u9', uploadedAt: appliedAt, source: 'استخدام', sourceId: `candidate-${index + 1}` },
+    meetings: index % 4 === 3 ? [] : [{ id: `candidate-meeting-${index + 1}-1`, date: daysFromNow(index % 6).slice(0, 10), result: candidateMeetingResults[index % candidateMeetingResults.length] }],
+    appliedAt,
+    updatedAt: daysAgo(Math.max(0, index - 2)),
+  };
+});
 
 export const taskLabels: TaskLabel[] = [
   { id: 'lbl-urgent', name: 'فوری', color: '#DC2626' }, { id: 'lbl-tech', name: 'فنی', color: '#2563EB' },
@@ -542,10 +585,43 @@ tasks.forEach((task, index) => {
   task.labelIds = [task.priority === 'urgent' ? 'lbl-urgent' : task.priority === 'high' ? 'lbl-important' : 'lbl-internal', index % 3 === 0 ? 'lbl-tech' : index % 3 === 1 ? 'lbl-customer' : 'lbl-seo'];
 });
 
-export const projectMembers: ProjectMember[] = projects.flatMap((project) => project.members.map((personId, index) => ({
-  id: `pm-${project.id}-${personId}`, projectId: project.id, personId, role: index === 0 ? 'عضو اصلی' : index === 1 ? 'کارشناس' : 'همکار پروژه',
+export const projectRoleTemplates: ProjectRoleTemplate[] = [
+  { id: 'prt-manager', name: 'مدیر پروژه', description: 'هدایت اجرا و هماهنگی ذی‌نفعان', responsibilities: ['برنامه‌ریزی و اولویت‌بندی', 'کنترل تحویل‌ها'], objectives: ['تحویل به‌موقع و در محدوده توافق‌شده'], requiredSkills: ['مدیریت پروژه', 'ارتباط با مشتری'], expectedHours: 40, customerVisible: true },
+  { id: 'prt-development', name: 'توسعه‌دهنده', description: 'پیاده‌سازی و نگهداری خروجی‌های فنی', responsibilities: ['توسعه', 'بازبینی فنی'], objectives: ['تحویل پایدار و قابل نگهداری'], requiredSkills: ['TypeScript', 'Git'], expectedHours: 80, customerVisible: false },
+  { id: 'prt-seo', name: 'کارشناس سئو', description: 'بهبود دیده‌شدن و کیفیت محتوای جستجو', responsibilities: ['تحقیق کلیدواژه', 'پایش رتبه'], objectives: ['رشد ترافیک هدفمند'], requiredSkills: ['SEO', 'تحلیل داده'], expectedHours: 32, customerVisible: true },
+  { id: 'prt-social', name: 'مدیر اینستاگرام', description: 'برنامه‌ریزی و اجرای فعالیت شبکه اجتماعی', responsibilities: ['تقویم محتوا', 'انتشار و پاسخ‌گویی'], objectives: ['رشد تعامل مخاطب'], requiredSkills: ['تولید محتوا', 'تحلیل شبکه اجتماعی'], expectedHours: 36, customerVisible: true },
+];
+
+export const projectRoles: ProjectRole[] = projects.flatMap((project, projectIndex) => projectRoleTemplates.slice(0, projectIndex % 3 === 0 ? 4 : 3).map((template, index) => ({
+  ...template,
+  id: `pr-${project.id}-${index + 1}`,
+  projectId: project.id,
+  templateId: template.id,
+  expectedHours: template.expectedHours + (projectIndex % 2 ? 8 : 0),
+  description: `${template.description} در ${project.name}`,
+})));
+
+export const projectActivities: ProjectActivity[] = projectRoles.flatMap((role, index) => [
+  { id: `pa-${role.id}-1`, projectId: role.projectId, roleId: role.id, title: role.responsibilities[0] ?? 'فعالیت اصلی', description: `فعالیت اجرایی نقش ${role.name}`, objective: role.objectives[0], expectedHours: Math.max(4, Math.round(role.expectedHours * 0.6)), customerVisible: role.customerVisible },
+  { id: `pa-${role.id}-2`, projectId: role.projectId, roleId: role.id, title: role.responsibilities[1] ?? 'گزارش و هماهنگی', description: `پیگیری و گزارش فعالیت‌های نقش ${role.name}`, objective: role.objectives[0], expectedHours: Math.max(2, role.expectedHours - Math.round(role.expectedHours * 0.6)), customerVisible: role.customerVisible && index % 2 === 0 },
+]);
+
+export const projectMembers: ProjectMember[] = projects.flatMap((project) => [...new Set([...project.members, ...tasks.filter((task) => task.projectId === project.id).flatMap((task) => task.assigneeIds ?? [task.assigneeId])])].map((personId, index) => ({
+  id: `pm-${project.id}-${personId}`, projectId: project.id, personId,
+  roleIds: projectRoles.filter((role) => role.projectId === project.id).filter((_, roleIndex) => roleIndex === index % 3 || (index === 0 && roleIndex === 2)).map((role) => role.id),
+  role: projectRoles.filter((role) => role.projectId === project.id).find((_, roleIndex) => roleIndex === index % 3)?.name ?? 'عضو پروژه',
   status: 'active' as const, joinedAt: project.startDate, hourlyCost: 180_000 + index * 35_000, responsibilities: index === 0 ? 'هماهنگی و تحویل خروجی‌های پروژه' : 'اجرای وظایف تخصصی پروژه',
 })));
+
+export const projectAccesses: ProjectAccess[] = projects.flatMap((project, index) => {
+  const roles = projectRoles.filter((role) => role.projectId === project.id);
+  const members = projectMembers.filter((member) => member.projectId === project.id);
+  return [
+    { id: `pac-${project.id}-all`, projectId: project.id, content: `کانال تلگرام پروژه: https://t.me/${project.code?.toLocaleLowerCase() ?? project.id}`, scope: 'project' as const, status: 'granted' as const, startDate: project.startDate, notes: 'کانال هماهنگی همه اعضای فعال پروژه', grantedBy: project.managerId, createdAt: project.startDate },
+    ...(roles[1] ? [{ id: `pac-${project.id}-role`, projectId: project.id, content: `GitLab ${project.code ?? project.id}، username: dev-${project.id}، password: Demo-${project.id}-2026`, scope: 'role' as const, status: 'granted' as const, roleId: roles[1].id, startDate: project.startDate, expiryDate: project.endDate, documentId: index === 0 ? 'bd2' : undefined, notes: 'حساب نمونهٔ مشترک نقش فنی', grantedBy: project.managerId, createdAt: project.startDate }] : []),
+    ...(members[0] ? [{ id: `pac-${project.id}-person`, projectId: project.id, content: `پنل مشتری، username: manager-${project.id}، password: Panel-${project.id}-demo`, scope: 'person' as const, status: 'granted' as const, projectMemberId: members[0].id, startDate: project.startDate, notes: 'اختصاص مستقیم به مسئول تحویل', grantedBy: project.managerId, createdAt: project.startDate }] : []),
+  ];
+});
 
 export const projectPhases: ProjectPhase[] = projects.flatMap((project, projectIndex) => {
   const definitions = ['تحلیل و نیازسنجی', 'طراحی', 'توسعه', 'تست', 'تحویل'];
@@ -566,6 +642,8 @@ tasks.forEach((task, index) => Object.assign(task, {
   estimatedHours: 6 + (index % 5) * 3,
   loggedHours: 0,
   phaseId: `phase-${task.projectId}-${(index % 5) + 1}`,
+  assigneeMemberIds: projectMembers.filter((member) => member.projectId === task.projectId && (task.assigneeIds ?? [task.assigneeId]).includes(member.personId)).map((member) => member.id),
+  activityId: projectActivities.find((activity) => activity.projectId === task.projectId && projectMembers.find((member) => member.projectId === task.projectId && member.personId === task.assigneeId)?.roleIds.includes(activity.roleId))?.id,
   creatorId: projects.find((project) => project.id === task.projectId)?.managerId,
   customerVisible: index % 3 !== 0,
 }));
@@ -598,9 +676,15 @@ export const performanceReasons: PerformancePointReason[] = [
   { id: 'reason-early', title: 'تحویل زودتر از موعد', defaultPoints: 15, direction: 'positive', category: 'تحویل' },
   { id: 'reason-quality', title: 'کیفیت بالای کار', defaultPoints: 10, direction: 'positive', category: 'کیفیت' },
   { id: 'reason-team', title: 'همکاری با همکار', defaultPoints: 5, direction: 'positive', category: 'تیمی' },
+  { id: 'reason-exceptional', title: 'عملکرد فراتر از انتظار', defaultPoints: 12, direction: 'positive', category: 'عملکرد ممتاز' },
+  { id: 'reason-project-success', title: 'اثرگذاری مثبت در پروژه', defaultPoints: 8, direction: 'positive', category: 'پروژه' },
+  { id: 'reason-customer', title: 'رضایت یا تقدیر مشتری', defaultPoints: 8, direction: 'positive', category: 'مشتری' },
   { id: 'reason-delay', title: 'تأخیر در تحویل', defaultPoints: -5, direction: 'negative', category: 'تحویل' },
   { id: 'reason-error', title: 'خطای تکراری', defaultPoints: -10, direction: 'negative', category: 'کیفیت' },
   { id: 'reason-absence', title: 'غیبت بدون هماهنگی', defaultPoints: -15, direction: 'negative', category: 'انضباط' },
+  { id: 'reason-commitment', title: 'عدم انجام تعهد ثبت‌شده', defaultPoints: -8, direction: 'negative', category: 'تعهدات' },
+  { id: 'reason-custom-positive', title: 'تشویق با توضیح سفارشی', defaultPoints: 5, direction: 'positive', category: 'سایر' },
+  { id: 'reason-custom-negative', title: 'کسر امتیاز با توضیح سفارشی', defaultPoints: -5, direction: 'negative', category: 'سایر' },
 ];
 export const performanceEvents: PerformancePointEvent[] = Array.from({ length: 24 }, (_, index) => ({
   id: `point-${index + 1}`, employeeId: employeeIds[index % employeeIds.length], reasonId: performanceReasons[index % performanceReasons.length].id,
@@ -610,10 +694,15 @@ export const performanceEvents: PerformancePointEvent[] = Array.from({ length: 2
   taskId: index % 4 === 0 ? tasks[index % tasks.length].id : undefined,
   createdBy: 'u1',
 }));
-export const performancePeriods: PerformancePeriod[] = employeeIds.flatMap((employeeId, index) => [
-  { id: `period-${employeeId}-1`, employeeId, title: 'شهریور ۱۴۰۵', score: 52 + (index * 7) % 42, grade: (index % 4 === 0 ? 'A+' : index % 3 === 0 ? 'B' : 'A') as PerformancePeriod['grade'], trend: index % 3 === 0 ? 'up' : 'flat', startedAt: '2026-08-01', endedAt: '2026-08-31' },
-  { id: `period-${employeeId}-2`, employeeId, title: 'مرداد ۱۴۰۵', score: 44 + (index * 5) % 38, grade: 'B', trend: index % 2 ? 'up' : 'down', startedAt: '2026-07-01', endedAt: '2026-07-31' },
-]);
+const mockPerformanceGrade = (score: number): PerformancePeriod['grade'] => score >= 95 ? 'A+' : score >= 85 ? 'A' : score >= 75 ? 'B' : score >= 65 ? 'C' : score >= 50 ? 'D' : 'F';
+export const performancePeriods: PerformancePeriod[] = employeeIds.flatMap((employeeId, index) => {
+  const mordadScore = 72 + (index * 5) % 24;
+  const tirScore = 64 + (index * 4) % 22;
+  return [
+    { id: `period-${employeeId}-1`, employeeId, title: 'مرداد ۱۴۰۵', score: mordadScore, baselineScore: 70, adjustmentTotal: mordadScore - 70, eventIds: [], grade: mockPerformanceGrade(mordadScore), trend: mordadScore > tirScore ? 'up' : mordadScore < tirScore ? 'down' : 'flat', status: 'finalized', evaluatedBy: 'u1', notes: 'جمع‌بندی ماهانه بر اساس رویدادهای ثبت‌شده و بازخورد مدیر مستقیم.', startedAt: '2026-07-23', endedAt: '2026-08-22', finalizedAt: '2026-08-23T09:00:00Z' },
+    { id: `period-${employeeId}-2`, employeeId, title: 'تیر ۱۴۰۵', score: tirScore, baselineScore: 70, adjustmentTotal: tirScore - 70, eventIds: [], grade: mockPerformanceGrade(tirScore), trend: index % 2 ? 'up' : 'down', status: 'finalized', evaluatedBy: 'u2', notes: 'ارزیابی ماهانه ثبت‌شده و نگهداری‌شده برای مشاهده روند.', startedAt: '2026-06-22', endedAt: '2026-07-22', finalizedAt: '2026-07-23T09:00:00Z' },
+  ];
+});
 
 export const employeeContracts: EmployeeContract[] = employees.map((employee, index) => ({
   id: `emp-contract-${employee.id}`,
@@ -632,43 +721,15 @@ export const personnelEvents: PersonnelEvent[] = employees.flatMap((employee, in
   ...(index % 2 === 0 ? [{ id: `personnel-rate-${employee.id}`, employeeId: employee.id, type: 'تغییر نرخ ساعتی', title: 'به‌روزرسانی نرخ ساعتی', date: daysAgo(index + 3).slice(0, 10), description: `نرخ ساعتی به ${employee.hourlyRate?.toLocaleString('fa-IR')} تومان تغییر کرد.`, createdBy: 'u1' }] : []),
 ]);
 
-export const documentCategories: DocumentCategory[] = [
-  { id: 'cat-minutes', code: '01', name: 'صورت جلسه', group: 'project' }, { id: 'cat-rfp', code: '02', name: 'نیازمندی اولیه (RFP)', group: 'project' },
-  { id: 'cat-report', code: '03', name: 'گزارشات', group: 'project' }, { id: 'cat-contract', code: '04', name: 'قرارداد مشتریان', group: 'customer' },
-  { id: 'cat-supplier', code: '05', name: 'قرارداد تامین کننده', group: 'contractor' }, { id: 'cat-06', code: '06', name: 'دستور عمل پروژه', group: 'project' },
-  { id: 'cat-07', code: '07', name: 'سند دسترسی', group: 'contractor' }, { id: 'cat-policy', code: '08', name: 'دستورالعمل‌ها و قوانین شرکت', group: 'management' },
-  { id: 'cat-09', code: '09', name: 'مستندات نامه', group: 'project' }, { id: 'cat-10', code: '10', name: 'تفهیم نامه', group: 'project' },
-  { id: 'cat-11', code: '11', name: 'درخواست نامه', group: 'project' }, { id: 'cat-12', code: '12', name: 'راهکار و سناریو نامه', group: 'management' },
-  { id: 'cat-13', code: '13', name: 'پروپوزال', group: 'project' }, { id: 'cat-general', code: '14', name: 'اطلاع‌نامه', group: 'general' },
-  { id: 'cat-15', code: '15', name: 'دعوت نامه', group: 'general' }, { id: 'cat-16', code: '16', name: 'انصراف و استعفا نامه', group: 'contractor' },
-  { id: 'cat-17', code: '17', name: 'پاسخ نامه', group: 'general' }, { id: 'cat-18', code: '18', name: 'سند خدمات', group: 'management' },
-  { id: 'cat-legal', code: '19', name: 'ابلاغ نامه', group: 'legal' }, { id: 'cat-20', code: '20', name: 'سند جلسه ارزیابی و آزمون', group: 'contractor' },
-  { id: 'cat-21', code: '21', name: 'دسترسی محرمانه', group: 'project' }, { id: 'cat-22', code: '22', name: 'نظرسنجی', group: 'general' },
-  { id: 'cat-23', code: '23', name: 'سند مالی و حسابداری', group: 'management' }, { id: 'cat-24', code: '24', name: 'سند بازاریابی و فروش', group: 'management' },
-  { id: 'cat-25', code: '25', name: 'سند لیست وظایف', group: 'project' }, { id: 'cat-26', code: '26', name: 'توافق نامه', group: 'project' },
-  { id: 'cat-27', code: '27', name: 'آیین نامه اجرایی و مقررات', group: 'management' }, { id: 'cat-28', code: '28', name: 'فرآیند و روش اجرایی', group: 'management' },
-  { id: 'cat-personnel', code: '29', name: 'پرونده پرسنلی', group: 'management' }, { id: 'cat-30', code: '30', name: 'اسناد تضامین', group: 'project' },
-  { id: 'cat-31', code: '31', name: 'اسناد مزایده و مناقصه', group: 'project' }, { id: 'cat-32', code: '32', name: 'اسناد خرید', group: 'management' },
-  { id: 'cat-33', code: '33', name: 'اموال', group: 'management' }, { id: 'cat-34', code: '34', name: 'تسویه حساب', group: 'management' },
-  { id: 'cat-36', code: '36', name: 'رسید تحویل اموال', group: 'contractor' }, { id: 'cat-37', code: '37', name: 'رسید دریافت اموال', group: 'contractor' },
-  { id: 'cat-38', code: '38', name: 'اخطار نامه', group: 'project' }, { id: 'cat-39', code: '39', name: 'هشدار نامه', group: 'project' },
-  { id: 'cat-40', code: '40', name: 'تحلیل و بررسی عملکرد فردی', group: 'contractor' }, { id: 'cat-41', code: '41', name: 'گزارش وضعیت فعلی', group: 'project' },
-  { id: 'cat-42', code: '42', name: 'پرسش نامه مشتری', group: 'customer' }, { id: 'cat-43', code: '43', name: 'سند پوزیشن در پروژه', group: 'project' },
-  { id: 'cat-44', code: '44', name: 'وظایف روزانه', group: 'general' }, { id: 'cat-45', code: '45', name: 'راهنمای مسیر آموزش و توسعه', group: 'contractor' },
-];
 export const businessDocuments: BusinessDocument[] = [
-  { id: 'bd1', title: 'صورت جلسه تحویل دمو اولیه سایت', projectId: 'p1', customerId: 'c1', categoryId: 'cat-minutes', documentNumber: 'TRI-1405-0018', summary: 'توافق روی نسخه اولیه و فهرست اصلاحات مشتری.', senderId: 'u2', recipientId: 'u1', followUpId: 'u7', dueDate: '2026-08-29', status: 'open', priority: 'high', tags: ['دمو', 'مشتری'], attachments: ['صورتجلسه-دمو.pdf'], createdAt: daysAgo(3), updatedAt: daysAgo(1), customerVisible: true },
-  { id: 'bd2', title: 'صورت جلسه توافق مالی و کاری پروژه', projectId: 'p3', customerId: 'c2', categoryId: 'cat-minutes', documentNumber: 'TRI-1405-0019', summary: 'جمع‌بندی تعهدات مالی و برنامه پشتیبانی.', senderId: 'u7', recipientId: 'u5', followUpId: 'u1', dueDate: '2026-09-02', status: 'completed', priority: 'normal', tags: ['مالی'], attachments: ['توافق-مالی.pdf'], createdAt: daysAgo(8), updatedAt: daysAgo(4), customerVisible: true },
-  { id: 'bd3', title: 'قرارداد کاری علی رضایی', employeeId: 'u2', categoryId: 'cat-personnel', documentNumber: 'HR-1403-0042', summary: 'پرونده پرسنلی و قرارداد همکاری.', senderId: 'u9', followUpId: 'u9', status: 'archived', priority: 'normal', tags: ['پرسنلی'], attachments: ['قرارداد-علی.pdf'], createdAt: daysAgo(120), updatedAt: daysAgo(30), customerVisible: false },
-  { id: 'bd4', title: 'راهنمای اجرایی ثبت ساعات پروژه', categoryId: 'cat-policy', documentNumber: 'POL-1405-0007', summary: 'رویه داخلی ثبت و تایید تایم‌لاگ.', senderId: 'u1', status: 'open', priority: 'normal', tags: ['فرآیند'], attachments: [], createdAt: daysAgo(15), updatedAt: daysAgo(2), customerVisible: false },
-  { id: 'bd5', title: 'صورت جلسه آقای موسوی با آقای پدرام ظفریان', projectId: 'p2', customerId: 'c7', categoryId: 'cat-minutes', documentNumber: 'TRI-1405-0020', summary: 'پیگیری دسترسی‌ها و زمان‌بندی استقرار.', senderId: 'u6', recipientId: 'u8', followUpId: 'u6', dueDate: '2026-08-27', status: 'open', priority: 'high', tags: ['استقرار'], attachments: ['جلسه-استقرار.pdf'], createdAt: daysAgo(2), updatedAt: daysAgo(1), customerVisible: false },
-  { id: 'bd6', title: 'پرسش‌نامه تکمیل اطلاعات مشتری پارس وود', section: 'customers', recordType: 'incoming', customerId: 'c1', categoryId: 'cat-contract', documentNumber: 'CUS-1405-0004', summary: 'دریافت اطلاعات تماس و نیازمندی‌های تمدید خدمات.', senderId: 'u7', recipientId: 'u1', followUpId: 'u7', dueDate: '2026-08-30', status: 'open', priority: 'normal', tags: ['مشتری'], attachments: [], createdAt: daysAgo(4), updatedAt: daysAgo(2), customerVisible: true },
-  { id: 'bd7', title: 'تایید صورت‌حساب مرحله دوم پروژه', section: 'finance', recordType: 'incoming', projectId: 'p1', customerId: 'c1', categoryId: 'cat-policy', documentNumber: 'FIN-1405-0012', summary: 'تایید دریافت مستندات مالی و برنامه پرداخت مرحله دوم.', senderId: 'u2', recipientId: 'u9', followUpId: 'u9', dueDate: '2026-09-03', status: 'open', priority: 'high', tags: ['مالی', 'فاکتور'], attachments: ['تایید-پرداخت.pdf'], createdAt: daysAgo(2), updatedAt: daysAgo(1), customerVisible: false },
+  { id: 'bd1', documentType: 'proposal', title: 'پیشنهاد استقرار CRM شعب', documentNumber: 'PROP-1405-018', summary: 'پیشنهاد فنی و مالی استقرار سامانه برای شعب مشتری.', customerId: 'c1', value: 860_000_000, validityDate: '2026-10-15', status: 'sent', attachments: ['proposal-crm-v2.pdf'], createdBy: 'u7', createdAt: daysAgo(18), updatedAt: daysAgo(3), customerVisible: true },
+  { id: 'bd2', documentType: 'project_contract', title: 'قرارداد استقرار و پشتیبانی سپهر', documentNumber: 'CONT-1405-021', summary: 'قرارداد اجرای پروژه و پشتیبانی یک‌ساله.', customerId: 'c1', projectId: 'p1', value: 860_000_000, startDate: '2026-02-01', endDate: '2027-01-31', status: 'active', attachments: ['contract-sepehr-signed.pdf'], createdBy: 'u7', createdAt: daysAgo(120), updatedAt: daysAgo(14), customerVisible: true },
+  { id: 'bd3', documentType: 'change_request', title: 'درخواست تغییر گزارش مدیریتی', documentNumber: 'CR-1405-009', summary: 'افزودن گزارش تجمیعی عملکرد شعب به محدوده پروژه.', customerId: 'c7', projectId: 'p2', requestedById: 'u7', requestDate: '2026-09-08', impactDescription: 'افزایش دو هفته‌ای زمان اجرا و افزودن ماژول گزارش.', value: 95_000_000, status: 'under_review', attachments: ['change-request-report.docx'], createdBy: 'u2', createdAt: daysAgo(4), updatedAt: daysAgo(1), customerVisible: true },
+  { id: 'bd4', documentType: 'employment_contract', title: 'قرارداد همکاری علی رضایی', documentNumber: 'EMP-1405-042', summary: 'قرارداد همکاری تمام‌وقت مدیر پروژه.', employeeId: 'u2', position: 'مدیر پروژه', startDate: '2026-01-01', endDate: '2026-12-29', compensation: 185_000_000, status: 'active', attachments: ['employment-ali-signed.pdf'], createdBy: 'u1', createdAt: daysAgo(180), updatedAt: daysAgo(30), customerVisible: false },
+  { id: 'bd5', documentType: 'acceptance', title: 'تأیید تحویل نسخه اولیه', documentNumber: 'ACC-1405-014', summary: 'تأیید مشتری بر تحویل نسخه اولیه و ورود به مرحله استقرار.', customerId: 'c1', projectId: 'p1', deliverable: 'نسخه اولیه سامانه و داشبورد مدیریتی', requestedDate: '2026-09-02', acceptedDate: '2026-09-06', status: 'accepted', attachments: ['acceptance-phase-one.pdf'], createdBy: 'u2', createdAt: daysAgo(10), updatedAt: daysAgo(6), customerVisible: true },
+  { id: 'bd6', documentType: 'other', title: 'راهنمای اجرایی ثبت ساعات', documentNumber: 'DOC-1405-007', summary: 'راهنمای داخلی ثبت و تأیید ساعات کاری پروژه‌ها.', notes: 'نسخه مورد استفاده تیم عملیات.', status: 'active', attachments: ['timesheet-guide.pdf'], createdBy: 'u1', createdAt: daysAgo(25), updatedAt: daysAgo(5), customerVisible: false },
+  { id: 'bd7', documentType: 'proposal', title: 'پیشنهاد اشتراک سازمانی نیکان', documentNumber: 'PROP-1405-019', summary: 'پیشنهاد اشتراک و خدمات راه‌اندازی برای تیم فروش.', customerId: 'c2', value: 420_000_000, validityDate: '2026-09-30', status: 'approved', attachments: ['nikan-proposal-final.pdf'], createdBy: 'u7', createdAt: daysAgo(12), updatedAt: daysAgo(2), customerVisible: true },
 ];
-businessDocuments.forEach((document) => {
-  if (!document.section) document.section = document.projectId ? 'projects' : document.customerId ? 'customers' : document.employeeId ? 'hr' : 'general';
-  if (!document.recordType) document.recordType = document.categoryId === 'cat-contract' || document.categoryId === 'cat-supplier' ? 'incoming' : 'record';
-});
 
 export const conversations: Conversation[] = [
   { id: 'conv1', participantIds: ['u1', 'u2'], unreadCount: 2, updatedAt: hoursAgo(1), groupId: 'chat-general' },
@@ -701,3 +762,21 @@ export const projectEvents: ProjectEvent[] = [
   { id: 'pe5', projectId: 'p4', personId: 'u3', eventType: 'تغییر وضعیت پروژه', stage: 'ثبت شد', priority: 'بالا', status: 'open', date: daysAgo(7), registeredBy: 'u2', description: 'پروژه به دلیل تغییر اولویت مشتری موقتاً متوقف شد.', customerVisible: true },
   { id: 'pe6', personId: 'u9', eventType: 'اخطار', stage: 'انجام شد', priority: 'بسیار بالا', status: 'completed', date: daysAgo(9), registeredBy: 'u1', description: 'ثبت اخطار اداری و جلسه پیگیری عملکرد.', result: 'برنامه اصلاحی با کارمند توافق شد.', customerVisible: false },
 ];
+
+export const customerUsers: User[] = [
+  { id: 'cu1', name: 'آرش زمانی', email: 'a.zamani@sepehr.co', phone: '۰۹۱۲۱۲۳۴۶۱۰', role: 'customer', status: 'online', isActive: true, title: 'مدیر ارشد فناوری (CTO)', customerId: 'c1' },
+  { id: 'cu2', name: 'سمانه اکبری', email: 's.akbari@sepehr.co', phone: '۰۹۱۲۱۲۳۴۶۱۱', role: 'customer', status: 'offline', isActive: true, title: 'مدیر مالی (CFO)', customerId: 'c1' },
+  { id: 'cu3', name: 'لیلا توکلی', email: 'l.tavakoli@nikan.ir', phone: '۰۹۱۲۱۲۳۴۶۱۲', role: 'customer', status: 'away', isActive: true, title: 'مدیر خرید', customerId: 'c2' },
+  { id: 'cu4', name: 'بهرام یوسفی', email: 'yousefi@example.com', phone: '۰۹۱۳۱۲۳۴۵۲۲', role: 'customer', status: 'offline', isActive: true, title: 'مشتری', customerId: 'c3' },
+];
+
+export const individualCustomers: Customer[] = [
+  { id: 'c8', code: 'CUS-P-008', entityType: 'person', name: 'آوا فرهمند', company: 'آوا فرهمند', nationalCode: '۰۰۷۴۲۱۹۸۳۶', email: 'ava.farhamand@example.com', phone: '۰۹۱۲۴۴۵۶۷۸۱', groups: ['مشتریان شخصی'], currency: 'IRR', country: 'ایران', province: 'تهران', city: 'تهران', postalCode: '۱۴۳۵۸۷۴۱۶۲', address: 'خیابان گاندی، کوچه یازدهم', website: 'avafarhamand.ir', status: 'active', value: 185_000_000, lastContact: daysAgo(3), assignedTo: 'u7' },
+  { id: 'c9', code: 'CUS-P-009', entityType: 'person', name: 'کیانوش مدنی', company: 'کیانوش مدنی', nationalCode: '۱۲۸۹۴۵۷۶۳۱', email: 'kianoush.madani@example.com', phone: '۰۹۱۳۷۶۵۴۳۲۱', groups: ['مشاوره'], currency: 'IRR', country: 'ایران', province: 'اصفهان', city: 'اصفهان', postalCode: '۸۱۶۵۹۴۳۲۷۱', address: 'چهارباغ بالا، مجتمع سپیدار', status: 'active', value: 96_000_000, lastContact: daysAgo(8), assignedTo: 'u2' },
+  { id: 'c10', code: 'CUS-P-010', entityType: 'person', name: 'رها نیک‌پی', company: 'رها نیک‌پی', nationalCode: '۴۵۷۰۳۱۹۸۲۴', email: 'raha.nikpey@example.com', phone: '۰۹۱۷۵۵۴۳۲۱۰', groups: ['مشتریان شخصی', 'جدید'], currency: 'USD', country: 'ایران', province: 'فارس', city: 'شیراز', postalCode: '۷۱۸۴۶۳۱۹۵۰', address: 'بلوار چمران، کوچه سرو', status: 'lead', value: 72_000_000, lastContact: daysAgo(1), assignedTo: 'u7' },
+];
+
+// Customer accounts are appended after all internal demo relations are generated so they
+// never become project assignees, employees, chat members, or monitoring subjects.
+users.push(...customerUsers);
+customers.push(...individualCustomers);

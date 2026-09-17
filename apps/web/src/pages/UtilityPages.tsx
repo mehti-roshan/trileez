@@ -5,7 +5,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import PageHeader from '../components/common/PageHeader.tsx';
 import QuickCreateDialog from '../components/common/QuickCreateDialog.tsx';
 import { tasks, users } from '../mock/data.ts';
-import { notificationRepository } from '../services/repositories.ts';
+import { candidateRepository, jobOpeningRepository, notificationRepository } from '../services/repositories.ts';
 import { formatDate, formatRelative } from '../utils/format.ts';
 import DataTable, { type DataTableColumn } from '../components/common/DataTable.tsx';
 import CsvToolbar from '../components/common/CsvToolbar.tsx';
@@ -13,6 +13,7 @@ import { canAccessFile, listFiles, registerFile, type FileMetadata } from '../se
 import { useApp } from '../context/AppContext.tsx';
 import CustomerVisibilityBadge from '../components/common/CustomerVisibilityBadge.tsx';
 import { exportCsv } from '../services/csv.ts';
+import { candidateMeetingResultLabels } from '../utils/recruitment.ts';
 
 const knowledge = [
   { id: 'kb1', title: 'راهنمای شروع کار با فضای کاری', category: 'شروع سریع', status: 'published', authorId: 'u3', views: 248, updatedAt: '2026-08-21' },
@@ -21,10 +22,11 @@ const knowledge = [
   { id: 'kb4', title: 'سیاست رضایت در نشست مانیتورینگ', category: 'مانیتورینگ', status: 'published', authorId: 'u6', views: 91, updatedAt: '2026-08-16' },
   { id: 'kb5', title: 'سؤالات متداول تمدید قرارداد', category: 'فروش', status: 'review', authorId: 'u7', views: 67, updatedAt: '2026-08-23' },
 ];
-const reminders = [
-  ...tasks.filter((task) => task.status !== 'done').slice(0, 8).map((task) => ({ id: task.id, title: task.title, type: 'موعد کار', dueDate: task.dueDate, owner: users.find((u) => u.id === task.assigneeId)?.name ?? '—', done: false })),
-  { id: 'r-contract', title: 'پیگیری تمدید قرارداد پتروشیمی فارس', type: 'قرارداد', dueDate: '2026-08-30', owner: 'سارا محمدی', done: false },
-  { id: 'r-report', title: 'ارسال گزارش فروش هفتگی', type: 'گزارش', dueDate: '2026-08-26', owner: 'علی رضایی', done: true },
+type ReminderRow = { id: string; title: string; type: string; dueDate: string; owner: string; done: boolean; detail?: string; to?: string };
+const baseReminders: ReminderRow[] = [
+  ...tasks.filter((task) => task.status !== 'done').slice(0, 8).map((task) => ({ id: task.id, title: task.title, type: 'موعد کار', dueDate: task.dueDate, owner: users.find((u) => u.id === task.assigneeId)?.name ?? '—', done: false, to: `/tasks/${task.id}` })),
+  { id: 'r-contract', title: 'پیگیری تمدید قرارداد پتروشیمی فارس', type: 'قرارداد', dueDate: '2026-09-20', owner: 'سارا محمدی', done: false },
+  { id: 'r-report', title: 'ارسال گزارش فروش هفتگی', type: 'گزارش', dueDate: '2026-09-12', owner: 'علی رضایی', done: true },
 ];
 const media = [
   { name: 'لوگوی پارس وود.svg', type: 'برند', size: '۲۴۰ کیلوبایت', updatedAt: '2026-08-20', owner: 'سارا محمدی' },
@@ -47,22 +49,30 @@ function SearchBox({ value, onChange, placeholder = 'جستجو...' }: { value: 
 }
 
 export function RemindersPage() {
+  const navigate = useNavigate();
   const [params] = useSearchParams(); const [view, setView] = useState(params.get('view') ?? 'all');
-  const today = new Date('2026-08-25T00:00:00Z').getTime();
+  const [candidateRows, setCandidateRows] = useState(() => candidateRepository.list());
+  const [recruitmentRows, setRecruitmentRows] = useState(() => jobOpeningRepository.list());
+  useEffect(() => candidateRepository.subscribe(setCandidateRows), []);
+  useEffect(() => jobOpeningRepository.subscribe(setRecruitmentRows), []);
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const recruitmentReminders: ReminderRow[] = candidateRows.flatMap((candidate) => candidate.meetings.map((meeting) => ({ id: `recruitment-${candidate.id}-${meeting.id}`, title: `جلسه استخدام با ${candidate.fullName}`, type: 'جلسه استخدام', dueDate: meeting.date, owner: users.find((user) => user.id === candidate.ownerId)?.name ?? '—', done: false, detail: `${recruitmentRows.find((job) => job.id === candidate.jobId)?.title ?? 'موقعیت استخدامی'} • ${candidateMeetingResultLabels[meeting.result]}`, to: `/hr/recruitment/${candidate.jobId}` })));
+  const reminders = [...recruitmentReminders, ...baseReminders];
   const rows = reminders.filter((x) => {
-    const due = new Date(x.dueDate).getTime();
-    const matchesView = view === 'all' || (view === 'done' ? x.done : view === 'today' ? due >= today && due < today + 86_400_000 : !x.done && due >= today);
+    const matchesView = view === 'all' || (view === 'done' ? x.done : view === 'today' ? !x.done && x.dueDate === today : !x.done && x.dueDate > today);
     return matchesView;
   });
   const columns: DataTableColumn<(typeof rows)[number]>[] = [
     { key: 'title', label: 'یادآور', value: (row) => row.title, render: (row) => <Typography sx={{ fontWeight: 700 }}>{row.title}</Typography> },
     { key: 'type', label: 'نوع', value: (row) => row.type, groupable: true },
+    { key: 'detail', label: 'جزئیات', value: (row) => row.detail ?? '—' },
     { key: 'owner', label: 'مسئول', value: (row) => row.owner },
     { key: 'dueDate', label: 'موعد', value: (row) => row.dueDate, render: (row) => formatDate(row.dueDate) },
     { key: 'status', label: 'وضعیت', value: (row) => row.done ? 'done' : 'pending', render: (row) => <Chip size="small" color={row.done ? 'success' : 'warning'} label={row.done ? 'انجام‌شده' : 'در انتظار اقدام'} /> },
   ];
   const csvColumns = columns.map(({ key, label, value }) => ({ key, label, value: value ?? (() => '') }));
-  return <Shell title="یادآورها" subtitle="پیگیری کارها، قراردادها و تعهدات نزدیک" action={<FormControl size="small" sx={{ minWidth: 180 }}><InputLabel>نمایش</InputLabel><Select label="نمایش" value={view} onChange={(e) => setView(e.target.value)}><MenuItem value="all">همه یادآورها</MenuItem><MenuItem value="today">امروز</MenuItem><MenuItem value="upcoming">آینده</MenuItem><MenuItem value="done">انجام‌شده</MenuItem></Select></FormControl>}><Card sx={{ p: 1 }}><DataTable rows={rows} columns={columns} getRowId={(row) => row.id} searchPlaceholder="جستجوی یادآور، نوع یا مسئول..." filters={[{ key: 'status', label: 'وضعیت', options: [{ value: 'pending', label: 'در انتظار اقدام' }, { value: 'done', label: 'انجام‌شده' }], value: (row) => row.done ? 'done' : 'pending' }]} toolbar={<CsvToolbar rows={rows} entityLabel="یادآورها" filename="reminders.csv" columns={csvColumns} />} /></Card></Shell>;
+  return <Shell title="یادآورها" subtitle="پیگیری کارها، جلسات استخدام، قراردادها و تعهدات نزدیک" action={<FormControl size="small" sx={{ minWidth: 180 }}><InputLabel>نمایش</InputLabel><Select label="نمایش" value={view} onChange={(e) => setView(e.target.value)}><MenuItem value="all">همه یادآورها</MenuItem><MenuItem value="today">امروز</MenuItem><MenuItem value="upcoming">آینده</MenuItem><MenuItem value="done">انجام‌شده</MenuItem></Select></FormControl>}><Card sx={{ p: 1 }}><DataTable rows={rows} columns={columns} getRowId={(row) => row.id} onRowClick={(row) => { if (row.to) navigate(row.to); }} searchPlaceholder="جستجوی یادآور، نوع یا مسئول..." filters={[{ key: 'status', label: 'وضعیت', options: [{ value: 'pending', label: 'در انتظار اقدام' }, { value: 'done', label: 'انجام‌شده' }], value: (row) => row.done ? 'done' : 'pending' }]} toolbar={<CsvToolbar rows={rows} entityLabel="یادآورها" filename="reminders.csv" columns={csvColumns} />} /></Card></Shell>;
 }
 
 export function KnowledgePage() {

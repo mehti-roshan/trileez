@@ -2,18 +2,20 @@
 // Prototype finance screens intentionally keep presentation logic close to mock data.
 // @ts-nocheck
 import { SyncOutlined } from '@mui/icons-material';
-import { Box, Button, Card, CardContent, Chip, Divider, LinearProgress, MenuItem, Select, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Divider, LinearProgress, MenuItem, Select, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material';
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import PageHeader from '../components/common/PageHeader.tsx';
 import QuickCreateDialog from '../components/common/QuickCreateDialog.tsx';
 import { bankAccounts, contracts, customers, expenses, invoices, installments, payments, projects, suppliers, tasks, timesheets, users } from '../mock/data.ts';
-import { formatCurrency, formatDate } from '../utils/format.ts';
+import { formatCurrency, formatDate, getTimesheetBillingStatusLabel, getTimesheetStatusLabel, normalizeTimesheetBillingStatus, normalizeTimesheetStatus, timesheetBillingStatusLabel, timesheetBillingStatusOptions, timesheetStatusOptions } from '../utils/format.ts';
 import { invoicePaidAmount, laborCost, lineItemTotals } from '../utils/finance.ts';
 import { syncStateLabel } from '../services/accountingProvider.ts';
 import DataTable from '../components/common/DataTable.tsx';
 import CsvToolbar from '../components/common/CsvToolbar.tsx';
-import { expenseRepository, supplierRepository, timesheetRepository } from '../services/repositories.ts';
+import { expenseRepository, supplierRepository, timesheetRepository, wageRepository } from '../services/repositories.ts';
+import { useApp } from '../context/AppContext.tsx';
+import { calculateWageLine, eligibleTimesheets, issueWage, wagePeriodOf } from '../services/wageService.ts';
 
 const normalizeDigits = (value: string) => value.replace(/[۰-۹]/g, (digit) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit))).replace(/[٬,]/g, '');
 const csvField = (row: Record<string, string>, ...keys: string[]) => keys.map((key) => row[key]).find((value) => value !== undefined && value !== '') ?? '';
@@ -75,10 +77,95 @@ export function ReceivablesPage() { return <ModernReceivablesPage />; }
 export function SuppliersPage() { return <ModernSuppliersPage />; }
 
 export function BillableWorkPage() {
+  const { user } = useApp();
   const [rows, setRows] = useState(() => timesheetRepository.list());
+  const [selectedRows, setSelectedRows] = useState<typeof rows>([]);
+  const [message, setMessage] = useState<{ severity: 'success' | 'error'; text: string } | null>(null);
+  const [wagePreview, setWagePreview] = useState<{ groups: Array<{ employeeId: string; employeeName: string; period: string; hours: number; amount: number; entryCount: number }>; totalHours: number; totalAmount: number; invalidCount: number } | null>(null);
   useEffect(() => timesheetRepository.subscribe(setRows), []);
+  useEffect(() => {
+    timesheetRepository.list().forEach((entry) => {
+      const status = normalizeTimesheetStatus(entry.status);
+      const billing = normalizeTimesheetBillingStatus(entry.billingStatus ?? 'payment_queued');
+      if (status === 'approved' && !entry.wageRecordId && ['suspended', 'purchase_invoice_queued'].includes(billing)) {
+        timesheetRepository.update(entry.id, { status: 'approved', billingStatus: 'payment_queued' });
+      }
+    });
+  }, []);
+  useEffect(() => {
+    const processed = new Map(wageRepository.list().flatMap((record) => record.lineItems.map((line) => [line.timeEntryId, record.id] as const)));
+    timesheetRepository.list().forEach((entry) => {
+      const wageId = processed.get(entry.id);
+      if (wageId && (entry.wageRecordId !== wageId || normalizeTimesheetBillingStatus(entry.billingStatus ?? '') !== 'purchase_invoice_registered')) {
+        timesheetRepository.update(entry.id, { wageRecordId: wageId, paymentStatus: 'queued', billingStatus: 'purchase_invoice_registered' });
+      }
+    });
+  }, []);
+  useEffect(() => setSelectedRows((current) => current.filter((selected) => rows.some((row) => row.id === selected.id))), [rows]);
   const billable = rows.filter((row) => row.billable);
-  const toggleBilling = (id: string, billingStatus: 'paid' | 'unpaid') => timesheetRepository.update(id, { billingStatus });
+  const canonicalPayableRows = () => {
+    if (!selectedRows.length) return { payableRows: [], unavailable: [] };
+    const canonicalSelectedRows = selectedRows.map((row) => {
+      const normalizedStatus = normalizeTimesheetStatus(row.status);
+      const normalizedBillingStatus = normalizeTimesheetBillingStatus(row.billingStatus ?? 'payment_queued');
+      if (row.status !== normalizedStatus || row.billingStatus !== normalizedBillingStatus) {
+        timesheetRepository.update(row.id, { status: normalizedStatus, billingStatus: normalizedBillingStatus });
+      }
+      return { ...row, status: normalizedStatus, billingStatus: normalizedBillingStatus };
+    });
+    const eligible = new Set<string>();
+    canonicalSelectedRows.forEach((row) => eligibleTimesheets(row.employeeId, wagePeriodOf(row.date)).forEach((entry) => eligible.add(entry.id)));
+    const unavailable = canonicalSelectedRows.filter((row) => !eligible.has(row.id));
+    const payableRows = canonicalSelectedRows.filter((row) => eligible.has(row.id));
+    return { payableRows, unavailable };
+  };
+  const prepareWagePreview = () => {
+    const { payableRows, unavailable } = canonicalPayableRows();
+    if (!payableRows.length) {
+      setMessage({ severity: 'error', text: 'هیچ‌یک از ردیف‌های انتخاب‌شده برای صدور فاکتور دستمزد واجد شرایط نیستند.' });
+      return;
+    }
+    const groups = new Map<string, { employeeId: string; employeeName: string; period: string; hours: number; amount: number; entryCount: number }>();
+    payableRows.forEach((row) => {
+      const task = tasks.find((item) => item.id === row.taskId);
+      if (!task) return;
+      const line = calculateWageLine(row, task);
+      const period = wagePeriodOf(row.date);
+      const key = `${row.employeeId}:${period}`;
+      const current = groups.get(key) ?? { employeeId: row.employeeId, employeeName: users.find((item) => item.id === row.employeeId)?.name ?? '—', period, hours: 0, amount: 0, entryCount: 0 };
+      current.hours += line.hours;
+      current.amount += line.amount;
+      current.entryCount += 1;
+      groups.set(key, current);
+    });
+    const groupList = Array.from(groups.values());
+    setWagePreview({ groups: groupList, totalHours: groupList.reduce((sum, group) => sum + group.hours, 0), totalAmount: groupList.reduce((sum, group) => sum + group.amount, 0), invalidCount: unavailable.length });
+  };
+  const issueSelectedWages = () => {
+    const { payableRows, unavailable } = canonicalPayableRows();
+    if (!payableRows.length) {
+      setWagePreview(null);
+      setMessage({ severity: 'error', text: 'هیچ‌یک از ردیف‌های انتخاب‌شده برای صدور فاکتور دستمزد واجد شرایط نیستند.' });
+      return;
+    }
+    try {
+      const groups = new Map<string, typeof rows>();
+      payableRows.forEach((row) => {
+        const key = `${row.employeeId}:${wagePeriodOf(row.date)}`;
+        groups.set(key, [...(groups.get(key) ?? []), row]);
+      });
+      let issued = 0;
+      groups.forEach((group) => {
+        const record = issueWage({ actor: user, employeeId: group[0].employeeId, period: wagePeriodOf(group[0].date), timeEntryIds: group.map((row) => row.id) });
+        issued += record.totalAmount;
+      });
+      setSelectedRows([]);
+      const skipped = unavailable.length ? ` ${unavailable.length} ردیف نامعتبر نادیده گرفته شد.` : '';
+      setMessage({ severity: 'success', text: `فاکتور دستمزد ${groups.size} دوره/کارمند به مبلغ ${formatCurrency(issued)} در صف پرداخت قرار گرفت.${skipped}` });
+    } catch (error) {
+      setMessage({ severity: 'error', text: error instanceof Error ? error.message : 'صدور فاکتور دستمزد انجام نشد.' });
+    }
+  };
   const csvColumns = [
     { key: 'employee', label: 'کارمند', value: (row) => users.find((user) => user.id === row.employeeId)?.name ?? '—' },
     { key: 'project', label: 'پروژه', value: (row) => projectName(row.projectId) },
@@ -86,19 +173,23 @@ export function BillableWorkPage() {
     { key: 'date', label: 'تاریخ', value: (row) => row.date },
     { key: 'hours', label: 'ساعت', value: (row) => row.hours },
     { key: 'cost', label: 'هزینه', value: (row) => row.calculatedCost ?? row.hours * (row.hourlyRate ?? 200000) },
-    { key: 'status', label: 'وضعیت تایید', value: (row) => row.status === 'approved' ? 'تایید شده' : 'رد شده' },
-    { key: 'billingStatus', label: 'وضعیت پرداخت', value: (row) => row.billingStatus === 'paid' ? 'پرداخت شده' : 'پرداخت نشده' },
+    { key: 'status', label: 'وضعیت کار', value: (row) => getTimesheetStatusLabel(row.status) },
+    { key: 'billingStatus', label: 'وضعیت مالی', value: (row) => getTimesheetBillingStatusLabel(row.billingStatus ?? 'payment_queued') },
   ];
-  return <Shell title="کار قابل صورتحساب" subtitle="مدیریت مالی ساعات کاری تاییدشده پروژه‌ها و وظایف" action={<CsvToolbar rows={billable} entityLabel="کار قابل صورتحساب" filename="billable-work.csv" columns={csvColumns} />}>
+  return <Shell title="دستمزد ها" subtitle="صدور فاکتور دستمزد بر اساس ساعات کاری تأییدشده و نرخ وظیفه" action={<Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}><CsvToolbar rows={billable} entityLabel="دستمزد ها" filename="wages.csv" columns={csvColumns} /><Button variant="contained" color="success" disabled={!selectedRows.length} onClick={prepareWagePreview} sx={{ fontWeight: 800, boxShadow: selectedRows.length ? 3 : undefined }}>صدور فاکتور دستمزد و قرار دادن در صف پرداخت{selectedRows.length ? ` (${selectedRows.length})` : ''}</Button></Stack>}>
+    {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}
     <Stats items={[
       { label: 'کل ساعات قابل صورتحساب', value: `${billable.reduce((sum, row) => sum + row.hours, 0)} ساعت` },
       { label: 'کار تاییدشده', value: `${billable.filter((row) => row.status === 'approved').reduce((sum, row) => sum + row.hours, 0)} ساعت`, color: 'success.main' },
       { label: 'پرداخت‌نشده', value: formatCurrency(billable.filter((row) => row.billingStatus !== 'paid').reduce((sum, row) => sum + (row.calculatedCost ?? row.hours * (row.hourlyRate ?? 200000)), 0)), color: 'warning.main' },
       { label: 'پرداخت‌شده', value: formatCurrency(billable.filter((row) => row.billingStatus === 'paid').reduce((sum, row) => sum + (row.calculatedCost ?? row.hours * (row.hourlyRate ?? 200000)), 0)), color: 'success.main' },
     ]} />
-    <Card sx={{ p: 1 }}><DataTable rows={billable} getRowId={(row) => row.id} searchPlaceholder="جستجوی کارمند، پروژه یا وظیفه..." filters={[
-      { key: 'status', label: 'وضعیت تایید', options: [{ value: 'approved', label: 'تایید شده' }, { value: 'rejected', label: 'رد شده' }], value: (row) => row.status },
-      { key: 'billingStatus', label: 'وضعیت پرداخت', options: [{ value: 'paid', label: 'پرداخت شده' }, { value: 'unpaid', label: 'پرداخت نشده' }], value: (row) => row.billingStatus ?? 'unpaid' },
+    <Card sx={{ p: 1 }}><DataTable rows={billable} getRowId={(row) => row.id} selectable onSelectionChange={setSelectedRows} initialColumnFilters={{
+      status: ['approved'],
+      billingStatus: ['payment_queued'],
+    }} searchPlaceholder="جستجوی کارمند، پروژه یا وظیفه..." filters={[
+      { key: 'status', label: 'وضعیت کار', options: timesheetStatusOptions, value: (row) => normalizeTimesheetStatus(row.status) },
+      { key: 'billingStatus', label: 'وضعیت مالی', options: timesheetBillingStatusOptions, value: (row) => row.billingStatus ?? 'suspended' },
     ]} columns={[
       { key: 'employee', label: 'کارمند', value: (row) => users.find((user) => user.id === row.employeeId)?.name ?? '—' },
       { key: 'project', label: 'پروژه', value: (row) => projectName(row.projectId), groupable: true },
@@ -107,10 +198,25 @@ export function BillableWorkPage() {
       { key: 'hours', label: 'ساعت', value: (row) => row.hours, aggregate: 'sum', render: (row) => `${row.hours} ساعت` },
       { key: 'rate', label: 'نرخ ساعتی', value: (row) => row.hourlyRate ?? 200000, render: (row) => formatCurrency(row.hourlyRate ?? 200000) },
       { key: 'cost', label: 'هزینه کار', value: (row) => row.calculatedCost ?? row.hours * (row.hourlyRate ?? 200000), aggregate: 'sum', render: (row) => formatCurrency(row.calculatedCost ?? row.hours * (row.hourlyRate ?? 200000)) },
-      { key: 'status', label: 'وضعیت تایید', value: (row) => row.status, render: (row) => chip(row.status) },
-      { key: 'billingStatus', label: 'وضعیت پرداخت', value: (row) => row.billingStatus ?? 'unpaid', render: (row) => <Stack direction="row" spacing={.5} alignItems="center"><Chip size="small" color={row.billingStatus === 'paid' ? 'success' : 'warning'} label={row.billingStatus === 'paid' ? 'پرداخت شده' : 'پرداخت نشده'} /><Button size="small" variant="outlined" disabled={row.status !== 'approved'} onClick={() => toggleBilling(row.id, row.billingStatus === 'paid' ? 'unpaid' : 'paid')}>{row.billingStatus === 'paid' ? 'لغو پرداخت' : row.status === 'approved' ? 'پرداخت' : 'ابتدا تایید شود'}</Button></Stack> },
+      { key: 'status', label: 'وضعیت کار', value: (row) => normalizeTimesheetStatus(row.status), filterLabel: (value) => getTimesheetStatusLabel(value), render: (row) => <Chip size="small" color={normalizeTimesheetStatus(row.status) === 'approved' ? 'success' : normalizeTimesheetStatus(row.status) === 'rejected' ? 'error' : 'warning'} label={getTimesheetStatusLabel(row.status)} /> },
+      { key: 'billingStatus', label: 'وضعیت مالی', value: (row) => normalizeTimesheetBillingStatus(row.billingStatus ?? 'payment_queued'), filterLabel: (value) => getTimesheetBillingStatusLabel(value), render: (row) => <Chip size="small" color={normalizeTimesheetBillingStatus(row.billingStatus ?? 'payment_queued') === 'paid' ? 'success' : normalizeTimesheetBillingStatus(row.billingStatus ?? 'payment_queued') === 'suspended' ? 'default' : 'warning'} label={getTimesheetBillingStatusLabel(row.billingStatus ?? 'payment_queued')} /> },
       { key: 'description', label: 'شرح', value: (row) => row.description },
     ]} /></Card>
+    <Dialog open={Boolean(wagePreview)} onClose={() => setWagePreview(null)} fullWidth maxWidth="sm" dir="rtl">
+      <DialogTitle sx={{ fontWeight: 800 }}>تأیید صدور فاکتور دستمزد</DialogTitle>
+      <DialogContent dividers>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>پیش از ثبت نهایی، خلاصه کارکرد و مبلغ هر کارمند را بررسی کنید.</Typography>
+        <Table size="small">
+          <TableHead><TableRow><TableCell>کارمند</TableCell><TableCell>دوره</TableCell><TableCell align="right">ساعت</TableCell><TableCell align="right">مبلغ</TableCell></TableRow></TableHead>
+          <TableBody>{wagePreview?.groups.map((group) => <TableRow key={`${group.employeeId}-${group.period}`}><TableCell><Typography fontWeight={700}>{group.employeeName}</Typography><Typography variant="caption" color="text.secondary">{group.entryCount} ردیف کاری</Typography></TableCell><TableCell>{group.period}</TableCell><TableCell align="right">{group.hours.toLocaleString('fa-IR')} ساعت</TableCell><TableCell align="right">{formatCurrency(group.amount)}</TableCell></TableRow>)}</TableBody>
+        </Table>
+        {wagePreview?.invalidCount ? <Alert severity="warning" sx={{ mt: 1.5 }}>تعداد {wagePreview.invalidCount.toLocaleString('fa-IR')} ردیف نامعتبر در صدور نهایی نادیده گرفته می‌شود.</Alert> : null}
+        <Divider sx={{ my: 1.5 }} />
+        <Stack direction="row" justifyContent="space-between" sx={{ fontWeight: 800 }}><Typography>جمع کل ساعات</Typography><Typography>{wagePreview?.totalHours.toLocaleString('fa-IR')} ساعت</Typography></Stack>
+        <Stack direction="row" justifyContent="space-between" sx={{ fontWeight: 800, mt: .75 }}><Typography>جمع کل قابل پرداخت</Typography><Typography color="success.main">{formatCurrency(wagePreview?.totalAmount ?? 0)}</Typography></Stack>
+      </DialogContent>
+      <DialogActions sx={{ direction: 'rtl', px: 3, py: 1.5 }}><Button onClick={() => setWagePreview(null)}>انصراف</Button><Button variant="contained" color="success" onClick={() => { issueSelectedWages(); setWagePreview(null); }}>تأیید و صدور فاکتور</Button></DialogActions>
+    </Dialog>
   </Shell>;
 }
 

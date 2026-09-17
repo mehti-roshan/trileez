@@ -1,21 +1,37 @@
-export type UserRole = 'admin' | 'manager' | 'member';
+export type UserRole = 'admin' | 'manager' | 'member' | 'customer';
 export type UserStatus = 'online' | 'away' | 'offline';
+export type PermissionKey =
+  | 'project:view' | 'project:create' | 'project:update'
+  | 'task:view' | 'task:create' | 'task:update'
+  | 'finance:view' | 'finance:pay'
+  | 'hr:view' | 'hr:manage-users'
+  | 'reports:view' | 'document:view';
+export interface PermissionOverrides { additions: PermissionKey[]; removals: PermissionKey[] }
 export type TaskStatus = 'todo' | 'in_progress' | 'review' | 'done';
 export type Priority = 'low' | 'medium' | 'high' | 'urgent';
 export type ProjectStatus = 'active' | 'on_hold' | 'completed' | 'archived';
 export type CustomerStatus = 'active' | 'inactive' | 'lead';
+export type CustomerEntityType = 'company' | 'person';
 export type TicketStatus = 'open' | 'in_progress' | 'waiting' | 'closed';
 export type DeviceStatus = 'online' | 'offline' | 'busy';
 export type SessionStatus = 'pending' | 'active' | 'ended' | 'rejected';
 export type TicketCategory = 'bug' | 'feature' | 'support' | 'other';
 
-export interface User { id: string; name: string; email: string; role: UserRole; status: UserStatus; title: string; avatar?: string }
+export interface User { id: string; name: string; firstName?: string; lastName?: string; email: string; phone?: string; role: UserRole; status: UserStatus; isActive: boolean; title: string; customerId?: string; avatar?: string; permissionOverrides?: PermissionOverrides; credentialHash?: string }
+export interface RoleDefinition { id: UserRole; label: string; permissions: PermissionKey[] }
 export interface Organization { id: string; name: string; slug: string }
-export interface Project { id: string; code?: string; name: string; description: string; customerId: string; managerId: string; budget: number; status: ProjectStatus; progress: number; startDate: string; endDate: string; members: string[]; tasksCount: number; completedTasksCount: number; color: string; website?: string; instagram?: string; telegram?: string; about?: string; goals?: string; advantages?: string; competitors?: string; contactPhone?: string; officeAddress?: string; factoryAddress?: string; defaultChatGroupId?: string }
-export interface ProjectMember { id: string; projectId: string; personId: string; role: string; status: 'active' | 'inactive'; joinedAt: string; leftAt?: string; hourlyCost?: number; responsibilities: string }
+export interface Project { id: string; code?: string; name: string; description: string; customerId: string; managerId: string; budget: number; grade: number; tags: string[]; status: ProjectStatus; progress: number; startDate: string; endDate: string; members: string[]; tasksCount: number; completedTasksCount: number; color: string; website?: string; instagram?: string; telegram?: string; about?: string; goals?: string; advantages?: string; competitors?: string; contactPhone?: string; officeAddress?: string; factoryAddress?: string; defaultChatGroupId?: string }
+export interface ProjectRoleTemplate { id: string; name: string; description: string; responsibilities: string[]; objectives: string[]; requiredSkills: string[]; expectedHours: number; customerVisible: boolean }
+export interface ProjectRole { id: string; projectId: string; templateId?: string; name: string; description: string; responsibilities: string[]; objectives: string[]; requiredSkills: string[]; expectedHours: number; customerVisible: boolean }
+export interface ProjectActivity { id: string; projectId: string; roleId: string; title: string; description: string; objective?: string; expectedHours: number; customerVisible: boolean }
+export interface ProjectMember { id: string; projectId: string; personId: string; role: string; roleIds: string[]; status: 'active' | 'inactive'; joinedAt: string; leftAt?: string; hourlyCost?: number; responsibilities: string }
+export type ProjectAccessScope = 'project' | 'role' | 'person';
+export type ProjectAccessStatus = 'granted' | 'revoked';
+export type ProjectAccessKind = 'telegram' | 'credentials' | 'link' | 'other';
+export interface ProjectAccess { id: string; projectId: string; content: string; kind?: ProjectAccessKind; system?: string; resource?: string; permission?: string; username?: string; secret?: string; scope: ProjectAccessScope; status: ProjectAccessStatus; roleId?: string; projectMemberId?: string; startDate?: string; expiryDate?: string; documentId?: string; notes: string; grantedBy: string; createdAt: string }
 export interface TaskLabel { id: string; name: string; color: string; icon?: string }
-export interface Task { id: string; title: string; description?: string; status: TaskStatus; priority: Priority; assigneeId: string; assigneeIds?: string[]; followerIds?: string[]; projectId: string; phaseId?: string; creatorId?: string; startDate?: string; dueDate: string; repeatEvery?: number; estimatedHours?: number; loggedHours?: number; hourlyRate?: number; customerVisible?: boolean; attachments?: string[]; createdAt: string; updatedAt: string; tags: string[]; labelIds?: string[] }
-export interface Customer { id: string; code?: string; name: string; company: string; email: string; phone: string; additionalPhones?: string[]; fax?: string; nationalCode?: string; country?: string; province?: string; city?: string; postalCode?: string; address?: string; website?: string; status: CustomerStatus; value: number; lastContact: string; assignedTo: string }
+export interface Task { id: string; title: string; description?: string; status: TaskStatus; priority: Priority; assigneeId: string; assigneeIds?: string[]; assigneeMemberIds?: string[]; followerIds?: string[]; projectId: string; phaseId?: string; activityId?: string; creatorId?: string; startDate?: string; dueDate: string; repeatEvery?: number; estimatedHours?: number; loggedHours?: number; hourlyRate?: number; customerVisible?: boolean; attachments?: string[]; createdAt: string; updatedAt: string; tags: string[]; labelIds?: string[] }
+export interface Customer { id: string; code?: string; entityType: CustomerEntityType; name: string; company: string; email: string; phone: string; additionalPhones?: string[]; fax?: string; nationalCode?: string; vatRegistrationNumber?: string; groups: string[]; currency: string; country?: string; province?: string; city?: string; postalCode?: string; address?: string; website?: string; status: CustomerStatus; value: number; lastContact: string; assignedTo: string }
 export interface TicketReply { id: string; ticketId: string; authorId: string; body: string; createdAt: string; customerVisible: boolean; attachments?: Attachment[] }
 export interface TicketActivity { id: string; ticketId: string; type: string; description: string; actorId: string; createdAt: string }
 export interface Ticket { id: string; title: string; description: string; status: TicketStatus; priority: Priority; category: TicketCategory; assigneeId: string; reporterId: string; projectId?: string; customerId?: string; contactName?: string; contactEmail?: string; contactPhone?: string; department?: string; service?: string; dueDate?: string; customerVisible?: boolean; createdAt: string; updatedAt: string; tags: string[]; replies?: TicketReply[]; activities?: TicketActivity[]; attachments?: Attachment[] }
@@ -28,10 +44,16 @@ export interface MonitoringAlert { id: string; title: string; description: strin
 export interface MonitoringAuditEvent { id: string; event: string; actorId: string; actorName: string; target: string; timestamp: string; severity: 'info' | 'warning' | 'critical'; sessionId?: string; projectId?: string; ip?: string }
 export interface Activity { id: string; type: string; userId: string; userName: string; entityType: string; entityId: string; entityName: string; description: string; createdAt: string }
 export interface NotificationItem { id: string; title: string; body: string; createdAt: string; read: boolean; recipientId?: string; actorId?: string; type?: 'task_assigned' | 'performance' | 'system' | 'ticket' | 'chat' | 'project' | 'document' | 'finance'; entityType?: string; entityId?: string; taskId?: string; projectId?: string; ticketId?: string; conversationId?: string; documentId?: string; priority?: 'normal' | 'high' | 'urgent'; channel?: 'in_app' | 'sms' | 'email' | 'push'; smsStatus?: 'queued' | 'mock_sent' }
-export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'lost' | 'converted';
+export type LeadStatus = 'active' | 'inactive' | 'new' | 'contacted' | 'qualified' | 'lost' | 'converted' | 'rejected';
+export type LeadStage = 'new' | 'contact_attempt' | 'contacted' | 'initial_review' | 'qualified';
+export type LeadActivityType = 'call' | 'meeting' | 'note' | 'email' | 'stage_changed' | 'status_changed' | 'follow_up';
+export interface LeadActivity { id: string; leadId: string; type: LeadActivityType; title: string; description: string; occurredAt: string; actorId: string; metadata?: { from?: string; to?: string } }
+export type LeadCommercialStatus = 'draft' | 'sent' | 'feedback' | 'finalized';
+export interface LeadProposalVersion { id: string; leadId: string; version: number; title: string; status: LeadCommercialStatus; amount?: number; fileName?: string; fileType?: string; fileDataUrl?: string; sentAt?: string; sentVia?: string; feedback?: string; createdAt: string; createdBy: string; finalizedAt?: string }
+export interface LeadContractVersion { id: string; leadId: string; version: number; title: string; status: LeadCommercialStatus; amount?: number; fileName?: string; fileType?: string; fileDataUrl?: string; sentAt?: string; sentVia?: string; feedback?: string; createdAt: string; createdBy: string; finalizedAt?: string }
 export type DocumentStatus = 'draft' | 'sent' | 'viewed' | 'approved' | 'rejected' | 'expired' | 'issued' | 'partial' | 'paid' | 'overdue' | 'cancelled';
 export interface LineItem { productId: string; quantity: number; unitPrice: number; discount: number; tax: number }
-export interface Lead { id: string; name: string; company: string; email: string; phone: string; estimatedValue: number; tags: string[]; assignedTo: string; status: LeadStatus; source: string; lastContactAt: string; nextFollowUpAt: string; notes: string; createdAt: string }
+export interface Lead { id: string; name: string; company: string; email: string; phone: string; estimatedValue: number; tags: string[]; assignedTo: string; status: LeadStatus; source: string; referralContact?: string; referralDescription?: string; lastContactAt: string; nextFollowUpAt: string; notes: string; createdAt: string; firstName?: string; lastName?: string; phones?: { type: string; number: string }[]; emails?: { type: string; address: string }[]; address?: string; city?: string; province?: string; country?: string; postalCode?: string; companyId?: string; website?: string; stage?: LeadStage }
 export interface Product { id: string; name: string; sku: string; category: string; type: 'نرم‌افزار' | 'خدمات' | 'پشتیبانی' | 'تجهیزات' | 'اشتراک' | 'سایر'; unit: string; price: number; taxRate: number; stock: number; active: boolean; updatedAt: string }
 export interface SyncMeta { externalSystem?: 'hesabfa'; externalId?: string; syncStatus?: 'synced' | 'pending' | 'changed' | 'error'; lastSyncedAt?: string }
 export interface Proposal extends SyncMeta { id: string; number: string; customerId: string; projectId?: string; title: string; amount: number; status: DocumentStatus; issuedAt: string; validUntil: string; ownerId: string; updatedAt: string; items: LineItem[]; relatedLeadId?: string }
@@ -44,18 +66,17 @@ export interface Installment { id: string; contractId: string; invoiceId: string
 export interface Supplier { id: string; name: string; contactName: string; phone: string; email: string; balance: number; type: 'supplier' | 'both' }
 export interface BankAccount { id: string; bankName: string; label: string; maskedNumber: string; accountType: string; balance: number; status: 'active' | 'inactive' }
 export interface Expense extends SyncMeta { id: string; title: string; category: string; projectId?: string; supplierId?: string; amount: number; date: string; status: 'paid' | 'pending' | 'approved'; paymentMethod: string; bankAccountId?: string; description: string }
-export type ResaleStatus = 'identified' | 'following' | 'proposal' | 'negotiating' | 'won' | 'lost';
-export interface ResaleOpportunity { id: string; customerId: string; productId: string; previousPurchase: string; opportunityTitle: string; estimatedValue: number; probability: number; assignedTo: string; status: ResaleStatus; nextFollowUp: string; notes: string; createdAt: string }
 export type GoalStatus = 'in_progress' | 'completed' | 'overdue' | 'cancelled';
 export interface Goal { id: string; title: string; ownerId: string; department: string; period: string; target: number; current: number; progress: number; status: GoalStatus; dueDate: string; description: string; createdAt: string }
-export type TimesheetStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
-export type TimesheetBillingStatus = 'unpaid' | 'paid';
-export interface TimesheetEntry { id: string; employeeId: string; projectId: string; taskId: string; date: string; hours: number; startTime?: string; endTime?: string; hourlyRate?: number; calculatedCost?: number; billable: boolean; billingStatus?: TimesheetBillingStatus; customerVisible?: boolean; description: string; status: TimesheetStatus; createdAt: string }
+export type TimesheetStatus = 'approved' | 'pending_review' | 'review_again' | 'suspended' | 'rejected';
+export type TimesheetBillingStatus = 'paid' | 'purchase_invoice_registered' | 'purchase_invoice_queued' | 'payment_queued' | 'suspended';
+export type TimesheetPaymentStatus = 'unprocessed' | 'queued';
+export interface TimesheetEntry { id: string; employeeId: string; projectId: string; taskId: string; date: string; hours: number; startTime?: string; endTime?: string; hourlyRate?: number; calculatedCost?: number; billable: boolean; billingStatus?: TimesheetBillingStatus; paymentStatus?: TimesheetPaymentStatus; wageRecordId?: string; customerVisible?: boolean; description: string; status: TimesheetStatus; createdAt: string }
 export interface ActivityLog { id: string; action: string; description: string; userId: string; timestamp: string; entityType: string; entityId: string; ip?: string; metadata?: string }
 export type EmploymentStatus = 'active' | 'leave' | 'suspended' | 'terminated';
 export type EmploymentType = 'full_time' | 'part_time' | 'project' | 'intern';
 export interface HourlyRateRecord { id: string; employeeId: string; hourlyRate: number; effectiveFrom: string; effectiveTo?: string; source?: string }
-export interface Employee { id: string; personnelCode: string; fullName: string; phone: string; email: string; nationalId: string; jobTitle: string; department: string; managerId?: string; employmentType: EmploymentType; contractType: string; employmentStatus: EmploymentStatus; hireDate: string; workLocation: string; workMode: 'حضوری' | 'دورکاری' | 'ترکیبی'; salary: number; hourlyRate?: number; hourlyRateHistory?: HourlyRateRecord[]; leaveBalance: number }
+export interface Employee { id: string; userId?: string; personnelCode: string; fullName: string; phone: string; email: string; nationalId: string; jobTitle: string; department: string; managerId?: string; employmentType: EmploymentType; contractType: string; employmentStatus: EmploymentStatus; hireDate: string; workLocation: string; workMode: 'حضوری' | 'دورکاری' | 'ترکیبی'; salary: number; hourlyRate?: number; hourlyRateHistory?: HourlyRateRecord[]; leaveBalance: number; hasGuarantee?: boolean; guaranteeAmount?: number }
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'leave' | 'mission' | 'remote';
 export interface AttendanceRecord { id: string; employeeId: string; date: string; checkIn?: string; checkOut?: string; hours: number; status: AttendanceStatus }
 export type LeaveType = 'annual' | 'sick' | 'unpaid' | 'hourly' | 'other';
@@ -63,22 +84,56 @@ export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 export interface LeaveRequest { id: string; employeeId: string; leaveType: LeaveType; startDate: string; endDate: string; days: number; reason: string; status: LeaveStatus; approverId: string; createdAt: string }
 export type MissionStatus = 'pending' | 'approved' | 'in_progress' | 'completed' | 'rejected' | 'cancelled';
 export interface Mission { id: string; employeeId: string; destination: string; purpose: string; startDate: string; endDate: string; days: number; estimatedCost: number; actualCost: number; status: MissionStatus; approverId: string; description: string }
-export type ReviewStatus = 'pending' | 'in_progress' | 'completed';
-export interface PerformanceReview { id: string; employeeId: string; reviewerId: string; period: string; overallScore: number; goalIds: string[]; strengths: string; improvements: string; managerComment: string; status: ReviewStatus; createdAt: string }
-export interface EmployeeDocument { id: string; employeeId: string; name: string; type: string; uploadedAt: string; expiresAt?: string; status: 'valid' | 'expiring' | 'expired' | 'no_expiry'; fileSize: string }
 export interface PayrollRecord { id: string; employeeId: string; month: string; baseSalary: number; workedHours?: number; hourlyRate?: number; overtime: number; overtimeHours?: number; benefits: number; adjustments?: number; deductions: number; tax: number; netSalary: number; status: 'draft' | 'approved' | 'paid'; paidAt?: string }
+export interface WageLine { timeEntryId: string; projectId: string; taskId: string; workDate: string; hours: number; taskHourlyRate: number; amount: number }
+export interface WageRecord extends SyncMeta { id: string; employeeId: string; period: string; lineItems: WageLine[]; totalHours: number; totalAmount: number; status: 'queued' | 'paid' | 'cancelled'; issuedAt: string; issuedBy: string; paidAt?: string }
 export interface JobOpening { id: string; title: string; department: string; employmentType: EmploymentType; openings: number; applicants: number; status: 'open' | 'paused' | 'filled' | 'closed'; postedAt: string }
-export type CandidateStage = 'resume' | 'screening' | 'interview' | 'final' | 'offer' | 'hired' | 'rejected';
-export interface Candidate { id: string; fullName: string; jobId: string; email: string; phone: string; stage: CandidateStage; score: number; ownerId: string; appliedAt: string }
-export interface PerformancePeriod { id: string; employeeId: string; title: string; score: number; grade: 'A+' | 'A' | 'B' | 'C' | 'D' | 'F'; trend: 'up' | 'down' | 'flat'; startedAt: string; endedAt: string }
+export type CandidateStage = 'resume_sent' | 'form_filling' | 'unavailable' | 'rejected_by_us' | 'rejected_by_candidate' | 'initial_meeting' | 'project_manager_intro' | 'secondary_meeting' | 'follow_up_call' | 'candidate_message' | 'project_mismatch' | 'no_response' | 'follow_up_again';
+export type CandidateStatus = 'open' | 'closed' | 'lost' | 'pending' | 'selected' | 'terminated' | 'mismatch' | 'terminating';
+export type CandidateSource = 'divar' | 'jobinja' | 'ponisha' | 'other';
+export type CandidateLossReason = 'long_process' | 'other_reasons' | 'financial_mismatch' | 'work_conditions_mismatch' | 'poor_communication' | 'employed_elsewhere' | 'no_response';
+export type CandidateMeetingResult = 'successful' | 'next_meeting_needed' | 'more_review_needed' | 'rejected' | 'no_show' | 'cancelled' | 'pending_decision' | 'selected';
+export interface CandidateMeeting { id: string; date: string; result: CandidateMeetingResult }
+export interface Candidate { id: string; fullName: string; jobId: string; email: string; phone: string; stage: CandidateStage; status: CandidateStatus; source: CandidateSource; otherSource?: string; lossReason?: CandidateLossReason; grade: number; ownerId: string; description: string; resume?: Attachment; meetings: CandidateMeeting[]; appliedAt: string; updatedAt: string }
+export interface PerformancePeriod { id: string; employeeId: string; title: string; score: number; baselineScore?: number; adjustmentTotal?: number; eventIds?: string[]; grade: 'A+' | 'A' | 'B' | 'C' | 'D' | 'F'; trend: 'up' | 'down' | 'flat'; status?: 'open' | 'finalized'; evaluatedBy?: string; notes?: string; startedAt: string; endedAt: string; finalizedAt?: string }
 export interface PerformancePointReason { id: string; title: string; defaultPoints: number; direction: 'positive' | 'negative'; category: string }
 export interface PerformancePointEvent { id: string; employeeId: string; reasonId: string; points: number; date: string; description: string; projectId?: string; taskId?: string; createdBy: string; attachmentId?: string }
 export interface PersonnelEvent { id: string; employeeId: string; type: string; title: string; date: string; description: string; projectId?: string; createdBy: string; attachmentId?: string }
 export interface EmployeeContract { id: string; employeeId: string; type: 'استخدام' | 'فریلنسری' | 'کارآموزی' | 'پیمانکاری' | 'پاره‌وقت' | 'تمام‌وقت'; startDate: string; endDate?: string; status: 'draft' | 'active' | 'expired' | 'terminated'; hourlyRate?: number; description: string; fileId?: string; signed: boolean }
-export interface DocumentCategory { id: string; code: string; name: string; group: 'project' | 'customer' | 'contractor' | 'management' | 'general' | 'legal' }
-export type SecretarySection = 'projects' | 'customers' | 'finance' | 'hr' | 'general';
-export type SecretaryRecordType = 'incoming' | 'outgoing' | 'record';
-export interface BusinessDocument { id: string; title: string; section?: SecretarySection; recordType?: SecretaryRecordType; projectId?: string; customerId?: string; employeeId?: string; taskId?: string; contractId?: string; categoryId: string; documentNumber: string; summary: string; senderId: string; recipientId?: string; followUpId?: string; dueDate?: string; followUpDate?: string; completedAt?: string; stage?: 'draft' | 'registered' | 'review' | 'follow_up' | 'action_required' | 'completed' | 'archived' | 'cancelled'; guaranteeType?: string; guaranteeNumber?: string; guaranteeAmount?: number; documentUrl?: string; googleDocsUrl?: string; googleSheetsUrl?: string; notes?: string; status: 'draft' | 'open' | 'completed' | 'archived'; priority: 'low' | 'normal' | 'high'; tags: string[]; attachments: string[]; createdAt: string; updatedAt: string; /** Safe default is internal; API authorization must enforce this boundary. */ customerVisible?: boolean }
+export type BusinessDocumentType = 'proposal' | 'project_contract' | 'change_request' | 'employment_contract' | 'acceptance' | 'other';
+export type BusinessDocumentStatus = 'draft' | 'sent' | 'submitted' | 'under_review' | 'approved' | 'active' | 'implemented' | 'accepted' | 'completed' | 'expired' | 'terminated' | 'rejected' | 'cancelled' | 'archived';
+export type DocumentSection = 'projects' | 'customers' | 'finance' | 'hr' | 'general';
+export interface BusinessDocument {
+  id: string;
+  documentType: BusinessDocumentType;
+  title: string;
+  documentNumber: string;
+  summary: string;
+  status: BusinessDocumentStatus;
+  customerId?: string;
+  projectId?: string;
+  employeeId?: string;
+  requestedById?: string;
+  value?: number;
+  validityDate?: string;
+  startDate?: string;
+  endDate?: string;
+  requestDate?: string;
+  requestedDate?: string;
+  acceptedDate?: string;
+  impactDescription?: string;
+  position?: string;
+  compensation?: number;
+  deliverable?: string;
+  notes?: string;
+  attachments: string[];
+  fileRecordIds?: string[];
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  /** Safe default is internal; API authorization must enforce this boundary. */
+  customerVisible?: boolean;
+}
 export interface Attachment { id: string; name: string; type: string; size: string; url?: string; uploadedBy?: string; uploadedAt?: string; source?: string; sourceId?: string; projectId?: string; customerId?: string; messageId?: string; /** Safe default is internal; API authorization must enforce this boundary. */ customerVisible?: boolean }
 export interface Conversation { id: string; participantIds: string[]; title?: string; unreadCount: number; updatedAt: string; groupId?: string; projectId?: string }
 export interface ChatGroup { id: string; name: string; projectId?: string; memberIds: string[]; isDefault?: boolean; createdAt: string }

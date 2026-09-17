@@ -146,6 +146,21 @@ const themeOptions: ThemeOptions = {
     MuiTooltip: { defaultProps: { arrow: true } },
     MuiAlert: { styleOverrides: { root: { borderRadius: 8 } } },
     MuiDialog: { styleOverrides: { paper: { borderRadius: 12 } } },
+    MuiDialogTitle: {
+      styleOverrides: {
+        root: { padding: '20px 24px 12px', fontWeight: 700 },
+      },
+    },
+    MuiDialogContent: {
+      styleOverrides: {
+        root: { padding: '16px 24px', '&:first-child': { paddingTop: 16 } },
+      },
+    },
+    MuiDialogActions: {
+      styleOverrides: {
+        root: { padding: '12px 24px 20px', gap: 8 },
+      },
+    },
     MuiMenu: {
       styleOverrides: {
         paper: {
