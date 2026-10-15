@@ -1,5 +1,5 @@
 import { Card, CardContent, Stack, Typography } from '@mui/material';
-import { users } from '../../mock/data.ts';
+import { users } from '../../services/repositories.ts';
 import type { Task } from '../../types/index.ts';
 import { formatDate } from '../../utils/format.ts';
 import { PriorityChip, TaskStatusChip } from './StatusChip.tsx';

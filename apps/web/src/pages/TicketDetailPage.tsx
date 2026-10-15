@@ -6,7 +6,7 @@ import PageHeader from '../components/common/PageHeader.tsx';
 import TicketFormDialog from '../components/common/TicketFormDialog.tsx';
 import CustomerVisibilityBadge from '../components/common/CustomerVisibilityBadge.tsx';
 import { PriorityChip, TicketStatusChip } from '../components/common/StatusChip.tsx';
-import { customers, projects, users } from '../mock/data.ts';
+import { customers, projects, users } from '../services/repositories.ts';
 import { ticketRepository } from '../services/repositories.ts';
 import { notify } from '../services/notificationService.ts';
 import type { Ticket, TicketReply } from '../types/index.ts';

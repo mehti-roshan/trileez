@@ -54,7 +54,7 @@ export default function CustomerFormDialog({ open, customer, onClose, onSaved }:
   const [saved, setSaved] = useState(false);
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setValues((current) => ({ ...current, [key]: value }));
   const close = () => { setValues(stateOf(customer)); onClose(); };
-  const submit = () => {
+  const submit = async () => {
     const displayName = values.displayName.trim();
     if (!displayName || submitting) return;
     setSubmitting(true);
@@ -74,15 +74,18 @@ export default function CustomerFormDialog({ open, customer, onClose, onSaved }:
       postalCode: values.postalCode.trim() || undefined,
       country: values.country.trim() || undefined,
     };
-    const result = customer
-      ? customerRepository.update(customer.id, shared)
-      : customerRepository.create({ ...shared, email: '', status: 'active', value: 0, lastContact: new Date().toISOString(), assignedTo: 'u1' });
-    setSubmitting(false);
-    if (!result) return;
-    setSaved(true);
-    onSaved?.(result);
-    setValues(customer ? stateOf(result) : emptyState());
-    onClose();
+    try {
+      const result = customer
+        ? await customerRepository.update(customer.id, shared)
+        : await customerRepository.create({ ...shared, email: '', status: 'active', value: 0, lastContact: new Date().toISOString(), assignedTo: 'u1' });
+      if (!result) return;
+      setSaved(true);
+      onSaved?.(result);
+      setValues(customer ? stateOf(result) : emptyState());
+      onClose();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const textField = (key: keyof Pick<FormState, 'displayName' | 'nationalCode' | 'vatRegistrationNumber' | 'phone' | 'website' | 'address' | 'province' | 'city' | 'postalCode' | 'country'>, label: string, ltr = false, multiline = false) => (

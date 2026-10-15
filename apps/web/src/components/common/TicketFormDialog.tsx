@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, FormControlLabel, InputLabel, MenuItem, Select, Stack, TextField } from '@mui/material';
 import { useEffect, useState } from 'react';
-import { customers, projects, users } from '../../mock/data.ts';
+import { customers, projects, users } from '../../services/repositories.ts';
 import type { Ticket, TicketCategory, TicketStatus, Priority } from '../../types/index.ts';
 
 const ticketDepartments = ['فنی', 'فروش', 'مالی', 'پشتیبانی', 'اداری'];

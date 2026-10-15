@@ -5,16 +5,14 @@ import { useNavigate, useParams } from 'react-router-dom';
 import CandidateFormDialog, { type CandidateInput } from '../components/common/CandidateFormDialog.tsx';
 import DataTable from '../components/common/DataTable.tsx';
 import PageHeader from '../components/common/PageHeader.tsx';
-import { useApp } from '../context/AppContext.tsx';
-import { employees } from '../mock/data.ts';
-import { listFiles, registerFile } from '../services/fileService.ts';
+import { employees } from '../services/repositories.ts';
+import { downloadStoredFile, listFiles, uploadStoredFile } from '../services/fileService.ts';
 import { candidateRepository, jobOpeningRepository } from '../services/repositories.ts';
 import type { Attachment, Candidate, CandidateStage, CandidateStatus } from '../types/index.ts';
 import { candidateLossReasonLabels, candidateMeetingResultLabels, candidateSourceLabels, candidateStageColor, candidateStageLabels, candidateStatusColor, candidateStatusLabels, candidateWorkflowAfterStageChange, candidateWorkflowAfterStatusChange, normalizeCandidateWorkflow } from '../utils/recruitment.ts';
 import { formatDate, formatDateTime } from '../utils/format.ts';
 
 const employeeName = (id: string) => employees.find((employee) => employee.id === id)?.fullName ?? '—';
-const readFile = (file: File) => new Promise<string>((resolve) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result ?? '')); reader.onerror = () => resolve(''); reader.readAsDataURL(file); });
 const isPdfResume = (resume: Attachment) => resume.type.toLowerCase().includes('pdf') || resume.name.toLowerCase().endsWith('.pdf');
 const workflowColor = (color: ReturnType<typeof candidateStageColor> | ReturnType<typeof candidateStatusColor>) => color === 'default' ? 'text.disabled' : `${color}.main`;
 const workflowSelectSx = {
@@ -34,7 +32,6 @@ const resolveResume = (resume: Attachment, candidateId: string): Attachment => {
 export default function RecruitmentDetailPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
-  const { user } = useApp();
   const [job, setJob] = useState(() => jobOpeningRepository.get(id));
   const [candidates, setCandidates] = useState(() => candidateRepository.list().filter((candidate) => candidate.jobId === id));
   const [selected, setSelected] = useState<Candidate>();
@@ -51,17 +48,16 @@ export default function RecruitmentDetailPage() {
     const candidateId = existing?.id ?? `candidate-${Date.now()}`;
     let resume: Attachment | undefined = input.resume;
     if (resumeFile) {
-      const fileId = `candidate-resume-${candidateId}-${Date.now()}`;
-      const url = await readFile(resumeFile);
-      resume = { id: fileId, name: resumeFile.name, type: resumeFile.type || 'application/octet-stream', size: `${Math.max(1, Math.round(resumeFile.size / 1024)).toLocaleString('fa-IR')} کیلوبایت`, url, uploadedBy: user.id, uploadedAt: now, source: 'استخدام', sourceId: candidateId };
-      registerFile({ ...resume, originalName: resumeFile.name, mimeType: resume.type, uploadedBy: user.id, visibility: 'workspace', access: ['view', 'edit', 'delete'], context: { kind: 'file', id: candidateId } });
+      const stored = await uploadStoredFile(resumeFile, { visibility: 'workspace', customerVisible: false, context: { kind: 'file', id: candidateId } });
+      resume = { id: stored.id, name: stored.name, type: stored.mimeType || stored.type, size: stored.size, uploadedBy: stored.uploadedBy, uploadedAt: stored.uploadedAt, source: 'استخدام', sourceId: candidateId };
     }
     const workflow = normalizeCandidateWorkflow(input.stage, input.status);
     const saved = existing
-      ? candidateRepository.update(existing.id, { ...input, ...workflow, resume, updatedAt: now })!
-      : candidateRepository.create({ ...input, ...workflow, id: candidateId, resume, appliedAt: now.slice(0, 10), updatedAt: now });
+      ? await candidateRepository.update(existing.id, { ...input, ...workflow, resume, updatedAt: now })
+      : await candidateRepository.create({ ...input, ...workflow, id: candidateId, resume, appliedAt: now.slice(0, 10), updatedAt: now });
+    if (!saved) throw new Error('داوطلب موردنظر برای ویرایش پیدا نشد.');
     const applicantCount = candidateRepository.list().filter((candidate) => candidate.jobId === job.id).length;
-    jobOpeningRepository.update(job.id, { applicants: applicantCount });
+    await jobOpeningRepository.update(job.id, { applicants: applicantCount });
     setFormCandidate(undefined);
     setSelected(saved);
   };
@@ -71,14 +67,10 @@ export default function RecruitmentDetailPage() {
   const averageGrade = candidates.length ? Math.round(candidates.reduce((sum, candidate) => sum + candidate.grade, 0) / candidates.length) : 0;
   const updateStage = (candidate: Candidate, stage: CandidateStage) => candidateRepository.update(candidate.id, { ...candidateWorkflowAfterStageChange(stage, candidate.status), updatedAt: new Date().toISOString() });
   const updateStatus = (candidate: Candidate, status: CandidateStatus) => candidateRepository.update(candidate.id, { ...candidateWorkflowAfterStatusChange(status, candidate.stage), updatedAt: new Date().toISOString() });
-  const downloadResume = (resume: Attachment) => {
-    if (!resume.url) return;
-    const link = document.createElement('a');
-    link.href = resume.url;
-    link.download = resume.name;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+  const downloadResume = async (resume: Attachment) => {
+    const stored = listFiles().find((file) => file.id === resume.id);
+    if (!stored) throw new Error('فایل رزومه در سرور پیدا نشد.');
+    await downloadStoredFile(stored);
   };
   return <Box>
     <PageHeader title={job.title} subtitle={`${job.department} • ${job.openings.toLocaleString('fa-IR')} ظرفیت`} crumbs={['تری‌لیز', 'منابع انسانی', 'استخدام', job.title]} actions={<Stack direction="row" spacing={1}><Button variant="outlined" onClick={() => navigate('/hr/recruitment')}>بازگشت</Button><Button variant="contained" startIcon={<Add />} onClick={() => setFormCandidate('new')}>افزودن متقاضی</Button></Stack>} />

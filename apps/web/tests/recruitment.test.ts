@@ -54,8 +54,9 @@ test('other source and loss reason remain optional', () => {
 
 test('mock recruitment data includes candidate meetings for today and future reminders', () => {
   const meetingDates = candidates.flatMap((candidate) => candidate.meetings.map((meeting) => meeting.date));
-  assert.ok(meetingDates.includes('2026-09-13'));
-  assert.ok(meetingDates.some((date) => date > '2026-09-13'));
+  const today = new Date().toISOString().slice(0, 10);
+  assert.ok(meetingDates.some((date) => date === today));
+  assert.ok(meetingDates.some((date) => date > today));
 });
 
 test('new recruitment positions validate canonical job-opening fields', () => {

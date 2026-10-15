@@ -1,4 +1,4 @@
-import { Add, AttachFile, Edit, FolderOpen } from '@mui/icons-material';
+import { Add, AttachFile, DeleteOutlined, Edit, FolderOpen } from '@mui/icons-material';
 import { Box, Button, Card, CardContent, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Divider, FormControl, InputLabel, MenuItem, Select, Stack, Typography } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -6,8 +6,8 @@ import CustomerVisibilityBadge from '../components/common/CustomerVisibilityBadg
 import DataTable from '../components/common/DataTable.tsx';
 import DocumentFormDialog from '../components/common/DocumentFormDialog.tsx';
 import PageHeader from '../components/common/PageHeader.tsx';
-import { customers, employees, projects, users } from '../mock/data.ts';
-import { registerFile } from '../services/fileService.ts';
+import { customers, employees, projects, users } from '../services/repositories.ts';
+import { uploadStoredFile } from '../services/fileService.ts';
 import { documentRepository } from '../services/repositories.ts';
 import type { BusinessDocument, BusinessDocumentType, DocumentSection } from '../types/index.ts';
 import { customerDisplayName } from '../utils/customer.ts';
@@ -59,21 +59,27 @@ export default function DocumentsPage() {
     return true;
   });
 
-  const save = (input: Omit<BusinessDocument, 'id' | 'createdAt' | 'updatedAt'>, files: File[]) => {
+  const save = async (input: Omit<BusinessDocument, 'id' | 'createdAt' | 'updatedAt'>, files: File[]) => {
     const now = new Date().toISOString();
     const existing = formDocument !== 'new' ? formDocument : undefined;
     const documentId = existing?.id ?? `documents-v2-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    const fileIds = files.map((_, index) => `document-file-${documentId}-${Date.now()}-${index}`);
+    const uploaded = [];
+    for (const file of files) {
+      uploaded.push(await uploadStoredFile(file, {
+        projectId: input.projectId,
+        customerId: input.customerId,
+        employeeId: input.employeeId,
+        visibility: 'workspace',
+        customerVisible: input.customerVisible,
+        context: input.projectId ? { kind: 'project', id: input.projectId } : input.customerId ? { kind: 'customer', id: input.customerId } : input.employeeId ? { kind: 'employee', id: input.employeeId } : { kind: 'file', id: documentId },
+      }));
+    }
+    const fileIds = uploaded.map((file) => file.id);
     const persistedInput = { ...input, fileRecordIds: [...(input.fileRecordIds ?? []), ...fileIds] };
     const document = existing
-      ? documentRepository.update(existing.id, { ...persistedInput, updatedAt: now })!
-      : documentRepository.create({ ...persistedInput, id: documentId, createdAt: now, updatedAt: now });
-    files.forEach((file, index) => registerFile({
-      id: fileIds[index], name: file.name, originalName: file.name, type: file.type || 'application/octet-stream', mimeType: file.type || 'application/octet-stream', size: file.size.toLocaleString('fa-IR') + ' بایت',
-      uploadedBy: input.createdBy, uploadedAt: now, source: documentTypeLabels[input.documentType], sourceId: document.id, projectId: input.projectId, customerId: input.customerId, employeeId: input.employeeId,
-      visibility: 'workspace', access: ['view', 'edit', 'delete', 'share'], customerVisible: input.customerVisible,
-      context: input.projectId ? { kind: 'project', id: input.projectId } : input.customerId ? { kind: 'customer', id: input.customerId } : input.employeeId ? { kind: 'employee', id: input.employeeId } : { kind: 'file', id: document.id },
-    }));
+      ? await documentRepository.update(existing.id, { ...persistedInput, updatedAt: now })
+      : await documentRepository.create({ ...persistedInput, id: documentId, createdAt: now, updatedAt: now });
+    if (!document) throw new Error('سند موردنظر برای ویرایش پیدا نشد.');
     setSelected(document);
     setFormDocument(undefined);
   };
@@ -110,7 +116,7 @@ export default function DocumentsPage() {
       { key: 'date', label: 'تاریخ کلیدی', value: (document) => dueDate(document) ?? '', render: (document) => dueDate(document) ? formatDate(dueDate(document)!) : '—' },
       { key: 'status', label: 'وضعیت', value: (document) => documentStatusLabels[document.status], render: (document) => <Chip size="small" color={documentStatusColor(document.status)} label={documentStatusLabels[document.status]} /> },
       { key: 'visibility', label: 'نمایش مشتری', value: (document) => document.customerVisible ? 'قابل مشاهده' : 'داخلی', render: (document) => <CustomerVisibilityBadge visible={document.customerVisible} /> },
-      { key: 'attachments', label: 'فایل', value: (document) => document.attachments.length, render: (document) => `${document.attachments.length.toLocaleString('fa-IR')} فایل` },
+      { key: 'attachments', label: 'فایل', value: (document) => (document.attachments ?? []).length, render: (document) => `${(document.attachments ?? []).length.toLocaleString('fa-IR')} فایل` },
     ]} /></Card>
 
     <Dialog open={Boolean(selected)} onClose={() => setSelected(undefined)} fullWidth maxWidth="md" slotProps={{ paper: { sx: { direction: 'rtl' } } }}><DialogTitle sx={{ fontWeight: 800 }}>{selected?.title}</DialogTitle><DialogContent dividers>{selected && <Stack spacing={1.5}>
@@ -122,9 +128,9 @@ export default function DocumentsPage() {
       {selected.position && <Info label="سمت" value={selected.position} />}{selected.compensation !== undefined && <Info label="جبران خدمات" value={formatCurrency(selected.compensation)} />}
       {selected.deliverable && <Info label="تحویل‌دادنی / نقطه عطف" value={selected.deliverable} />}{selected.requestedDate && <Info label="تاریخ درخواست تأیید" value={formatDate(selected.requestedDate)} />}{selected.acceptedDate && <Info label="تاریخ پذیرش" value={formatDate(selected.acceptedDate)} />}
       <Divider /><Info label="شرح" value={selected.summary || '—'} />{selected.notes && <Info label="یادداشت" value={selected.notes} />}
-      <Typography sx={{ fontWeight: 800 }}>فایل‌های سند</Typography><Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: 'wrap' }}>{selected.attachments.map((file) => <Chip key={file} icon={<AttachFile />} label={file} variant="outlined" />)}{!selected.attachments.length && <Typography color="text.secondary">فایلی ثبت نشده است.</Typography>}</Stack>
+      <Typography sx={{ fontWeight: 800 }}>فایل‌های سند</Typography><Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: 'wrap' }}>{(selected.attachments ?? []).map((file) => <Chip key={file} icon={<AttachFile />} label={file} variant="outlined" />)}{!(selected.attachments ?? []).length && <Typography color="text.secondary">فایلی ثبت نشده است.</Typography>}</Stack>
       <Divider /><Typography variant="caption" color="text.secondary">ایجاد: {formatDateTime(selected.createdAt)} • آخرین تغییر: {formatDateTime(selected.updatedAt)}</Typography>
-    </Stack>}</DialogContent><DialogActions><Button startIcon={<Edit />} onClick={() => { setFormDocument(selected); setSelected(undefined); }}>ویرایش</Button><Button startIcon={<FolderOpen />} onClick={() => navigate('/media')}>فایل منیجر</Button><Button onClick={() => setSelected(undefined)}>بستن</Button></DialogActions></Dialog>
+    </Stack>}</DialogContent><DialogActions><Button startIcon={<Edit />} onClick={() => { setFormDocument(selected); setSelected(undefined); }}>ویرایش</Button><Button color="error" startIcon={<DeleteOutlined />} onClick={async () => { if (!selected || !window.confirm(`سند «${selected.title}» حذف شود؟`)) return; await documentRepository.remove(selected.id); setSelected(undefined); }}>حذف</Button><Button startIcon={<FolderOpen />} onClick={() => navigate('/media')}>فایل منیجر</Button><Button onClick={() => setSelected(undefined)}>بستن</Button></DialogActions></Dialog>
     {formDocument && <DocumentFormDialog key={formDocument === 'new' ? 'new-document' : formDocument.id} document={formDocument === 'new' ? undefined : formDocument} initialProjectId={params.get('project') ?? undefined} initialCustomerId={params.get('customer') ?? undefined} initialEmployeeId={params.get('employee') ?? undefined} onClose={() => setFormDocument(undefined)} onSave={save} />}
   </Box>;
 }

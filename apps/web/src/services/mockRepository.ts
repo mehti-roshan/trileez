@@ -1,58 +1,20 @@
 type Listener<T> = (items: T[]) => void;
 
-const memory = new Map<string, unknown[]>();
-
-function readStored<T>(key: string, seed: T[]): T[] {
-  if (memory.has(key)) return memory.get(key) as T[];
-  if (typeof window !== 'undefined') {
-    try {
-      const stored = window.localStorage.getItem(`trileez-${key}`);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          seed.splice(0, seed.length, ...parsed);
-          memory.set(key, parsed);
-          return parsed as T[];
-        }
-      }
-    } catch {
-      // Storage is optional in the prototype.
-    }
-  }
-  const initial = [...seed];
-  memory.set(key, initial);
-  return initial;
-}
-
-function persist<T>(key: string, items: T[]) {
-  memory.set(key, items);
-  if (typeof window !== 'undefined') {
-    try {
-      window.localStorage.setItem(`trileez-${key}`, JSON.stringify(items));
-    } catch {
-      // Storage quotas/private browsing must not break the UI.
-    }
-  }
-}
-
 export interface Repository<T extends { id: string }> {
   list(): T[];
   get(id: string): T | undefined;
-  create(input: Omit<T, 'id'> & { id?: string }): T;
-  update(id: string, patch: Partial<T>): T | undefined;
-  remove(id: string): boolean;
+  create(input: Omit<T, 'id'> & { id?: string }): T | Promise<T>;
+  update(id: string, patch: Partial<T>): T | undefined | Promise<T | undefined>;
+  remove(id: string): boolean | Promise<boolean>;
   subscribe(listener: Listener<T>): () => void;
 }
 
 export function createMockRepository<T extends { id: string }>(key: string, seed: T[]): Repository<T> {
-  let items = readStored(key, seed);
+  let items = [...seed];
   const listeners = new Set<Listener<T>>();
   const notify = () => listeners.forEach((listener) => listener([...items]));
   const commit = (next: T[]) => {
     items = next;
-    // Keep legacy consumers of the exported mock arrays coherent during migration.
-    seed.splice(0, seed.length, ...next);
-    persist(key, items);
     notify();
   };
   return {

@@ -1,14 +1,15 @@
 import { Add, Search } from '@mui/icons-material';
-import { Box, Button, Card, CardContent, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, InputAdornment, InputLabel, LinearProgress, MenuItem, Select, Stack, Table, TableBody, TableCell, TableHead, TablePagination, TableRow, TextField, Typography } from '@mui/material';
+import { Box, Button, Card, CardContent, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, InputAdornment, InputLabel, LinearProgress, MenuItem, Select, Stack, Table, TableBody, TableCell, TableHead, TablePagination, TableRow, TextField, Typography } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import PageHeader from '../components/common/PageHeader.tsx';
 import CsvToolbar from '../components/common/CsvToolbar.tsx';
 import DataTable from '../components/common/DataTable.tsx';
-import { activityLogs, customers, goals, projects, tasks, timesheets, users } from '../mock/data.ts';
-import { formatCurrency, formatDate, formatDateTime, getTimesheetStatusLabel, normalizeTimesheetStatus, timesheetBillingStatusLabel, timesheetBillingStatusOptions, timesheetStatusOptions } from '../utils/format.ts';
-import { goalRepository, timesheetRepository } from '../services/repositories.ts';
+import { activityLogs, customers, goals, projects, tasks, timesheets, users } from '../services/repositories.ts';
+import { formatCurrency, formatDate, formatDateTime, getTimesheetStatusLabel, normalizeTimesheetStatus, timesheetStatusOptions } from '../utils/format.ts';
+import { goalRepository } from '../services/repositories.ts';
 import EntityFormDialog, { type EntityField } from '../components/common/EntityFormDialog.tsx';
+import TaskTimePage from './TaskTimePage.tsx';
 
 const labels: Record<string, string> = { identified: 'شناسایی شده', following: 'در حال پیگیری', proposal: 'پیشنهاد ارسال شده', negotiating: 'در حال مذاکره', won: 'موفق', lost: 'ناموفق', in_progress: 'در حال اجرا', completed: 'تکمیل شده', overdue: 'عقب‌افتاده', cancelled: 'لغو شده', draft: 'پیش‌نویس', submitted: 'ارسال شده', approved: 'تایید شده', rejected: 'رد شده' };
 const tone = (value: string) => ['won', 'completed', 'approved'].includes(value) ? 'success' : ['lost', 'overdue', 'rejected'].includes(value) ? 'error' : ['following', 'proposal', 'negotiating', 'submitted'].includes(value) ? 'warning' : 'default';
@@ -55,38 +56,14 @@ function ModernGoalsPage() {
     { name: 'dueDate', label: 'موعد', type: 'date', required: true },
     { name: 'description', label: 'توضیحات', type: 'textarea' },
   ];
-  const save = (values: Record<string, string>) => {
-    goalRepository.create({ id: undefined, title: values.title, ownerId: values.ownerId, department: values.department || 'سازمانی', period: values.period, target: Number(values.target) || 0, current: 0, progress: 0, status: 'in_progress', dueDate: values.dueDate, description: values.description || '', createdAt: new Date().toISOString() });
-    close();
+  const save = async (values: Record<string, string>) => {
+    await goalRepository.create({ id: undefined, title: values.title, ownerId: values.ownerId, department: values.department || 'سازمانی', period: values.period, target: Number(values.target) || 0, current: 0, progress: 0, status: 'in_progress', dueDate: values.dueDate, description: values.description || '', createdAt: new Date().toISOString() });
   };
   return <Box><Header title="اهداف" subtitle="مدیریت اهداف تیمی و شاخص‌های عملکرد" onAdd={() => setParams((current) => { const next = new URLSearchParams(current); next.set('create', '1'); return next; }, { replace: true })} csv={<CsvToolbar rows={rows} entityLabel="اهداف" filename="goals.csv" columns={[{ key: 'title', label: 'هدف', value: (row) => row.title }, { key: 'owner', label: 'مسئول', value: (row) => users.find((user) => user.id === row.ownerId)?.name }, { key: 'progress', label: 'پیشرفت', value: (row) => row.progress }, { key: 'status', label: 'وضعیت', value: (row) => labels[row.status] ?? row.status }]} />} /><Card sx={{ p: 1 }}><DataTable rows={rows} getRowId={(row) => row.id} searchPlaceholder="جستجوی عنوان هدف، مسئول یا واحد..." filters={[{ key: 'status', label: 'وضعیت', options: Object.entries(labels).filter(([key]) => ['in_progress', 'completed', 'overdue', 'cancelled'].includes(key)).map(([value, label]) => ({ value, label })), value: (row) => row.status }]} columns={[{ key: 'title', label: 'هدف', value: (row) => `${row.title} ${row.department}`, render: (row) => <Box><Typography sx={{ fontWeight: 700 }}>{row.title}</Typography><Typography variant="caption" color="text.secondary">{row.department}</Typography></Box> }, { key: 'owner', label: 'مسئول', value: (row) => users.find((user) => user.id === row.ownerId)?.name ?? '—' }, { key: 'period', label: 'دوره', value: (row) => row.period }, { key: 'progress', label: 'پیشرفت', value: (row) => row.progress, aggregate: 'average', render: (row) => `${row.progress}٪` }, { key: 'dueDate', label: 'موعد', value: (row) => row.dueDate, render: (row) => formatDate(row.dueDate) }, { key: 'status', label: 'وضعیت', value: (row) => row.status, render: (row) => <Chip size="small" color={tone(row.status) as 'default'} label={labels[row.status] ?? row.status} /> }]} /></Card><EntityFormDialog open={open} onClose={close} title="ایجاد هدف" fields={fields} onSubmit={save} submitLabel="ثبت هدف" /></Box>;
 }
 
 function ModernTimesheetsPage() {
-  const [rows, setRows] = useState(timesheetRepository.list());
-  useEffect(() => timesheetRepository.subscribe(setRows), []);
-  return <Box><Header title="ساعات کاری" subtitle="ثبت و بررسی زمان صرف‌شده روی پروژه‌ها و وظایف" csv={<CsvToolbar rows={rows} entityLabel="ساعات کاری" filename="timesheets.csv" columns={[
-    { key: 'employee', label: 'کارمند', value: (row) => users.find((user) => user.id === row.employeeId)?.name },
-    { key: 'project', label: 'پروژه', value: (row) => projects.find((project) => project.id === row.projectId)?.name },
-    { key: 'date', label: 'تاریخ', value: (row) => row.date },
-    { key: 'hours', label: 'ساعت', value: (row) => row.hours },
-    { key: 'status', label: 'وضعیت کار', value: (row) => getTimesheetStatusLabel(row.status) },
-    { key: 'billingStatus', label: 'وضعیت مالی', value: (row) => timesheetBillingStatusLabel[row.billingStatus ?? 'suspended'] },
-  ]} />} /><Card sx={{ p: 1 }}><DataTable rows={rows} getRowId={(row) => row.id} searchPlaceholder="جستجوی کارمند، پروژه یا وظیفه..." filters={[
-    { key: 'status', label: 'وضعیت کار', options: timesheetStatusOptions, value: (row) => normalizeTimesheetStatus(row.status) },
-    { key: 'billingStatus', label: 'وضعیت مالی', options: timesheetBillingStatusOptions, value: (row) => timesheetBillingStatusLabel[row.billingStatus ?? 'suspended'] },
-    { key: 'customerVisible', label: 'نمایش به مشتری', options: [{ value: 'visible', label: 'قابل مشاهده برای مشتری' }, { value: 'internal', label: 'داخلی' }], value: (row) => row.customerVisible ? 'visible' : 'internal' },
-  ]} columns={[
-    { key: 'employee', label: 'کارمند', value: (row) => users.find((user) => user.id === row.employeeId)?.name ?? '—' },
-    { key: 'project', label: 'پروژه', value: (row) => projects.find((project) => project.id === row.projectId)?.name ?? '—', groupable: true },
-    { key: 'task', label: 'وظیفه', value: (row) => tasks.find((task) => task.id === row.taskId)?.title ?? '—' },
-    { key: 'date', label: 'تاریخ', value: (row) => row.date, render: (row) => formatDate(row.date) },
-    { key: 'hours', label: 'ساعت', value: (row) => row.hours, aggregate: 'sum', render: (row) => `${row.hours} ساعت` },
-    { key: 'cost', label: 'هزینه', value: (row) => row.calculatedCost ?? row.hours * (row.hourlyRate ?? 200000), aggregate: 'sum', render: (row) => formatCurrency(row.calculatedCost ?? row.hours * (row.hourlyRate ?? 200000)) },
-    { key: 'status', label: 'وضعیت کار', value: (row) => row.status, render: (row) => <Select size="small" value={row.status} onChange={(event) => timesheetRepository.update(row.id, { status: event.target.value as typeof row.status })} sx={{ minWidth: 160 }}>{timesheetStatusOptions.map((option) => <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}</Select> },
-    { key: 'billingStatus', label: 'وضعیت مالی', value: (row) => timesheetBillingStatusLabel[row.billingStatus ?? 'suspended'], render: (row) => <Chip size="small" color={row.billingStatus === 'paid' ? 'success' : row.billingStatus === 'suspended' ? 'default' : 'warning'} label={timesheetBillingStatusLabel[row.billingStatus ?? 'suspended']} /> },
-    { key: 'customerVisible', label: 'نمایش به مشتری', value: (row) => row.customerVisible ? 'قابل مشاهده برای مشتری' : 'داخلی', render: (row) => <Checkbox size="small" checked={Boolean(row.customerVisible)} onChange={(event) => timesheetRepository.update(row.id, { customerVisible: event.target.checked })} onClick={(event) => event.stopPropagation()} slotProps={{ input: { 'aria-label': row.customerVisible ? 'مخفی کردن از مشتری' : 'نمایش برای مشتری' } }} /> },
-  ]} /></Card></Box>;
+  return <TaskTimePage />;
 }
 
 function ModernActivitiesPage() {

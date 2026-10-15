@@ -1,4 +1,4 @@
-import { roleDefinitions } from '../mock/data.ts';
+import { roleDefinitions } from '../constants/roleDefinitions.ts';
 import type { PermissionKey, User } from '../types/index.ts';
 
 export type ResourceKind = 'project' | 'customer' | 'file' | 'conversation' | 'employee' | 'monitoring';

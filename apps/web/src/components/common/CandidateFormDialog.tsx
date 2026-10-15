@@ -1,7 +1,7 @@
 import { Add, AttachFile, DeleteOutlined, UploadFile } from '@mui/icons-material';
 import { Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, IconButton, InputLabel, MenuItem, Select, Stack, TextField, Typography } from '@mui/material';
 import { useState } from 'react';
-import { employees } from '../../mock/data.ts';
+import { employees } from '../../services/repositories.ts';
 import type { Candidate, CandidateMeeting, CandidateSource, CandidateStage, CandidateStatus } from '../../types/index.ts';
 import { candidateLossReasonLabels, candidateMeetingResultLabels, candidateNeedsLossReason, candidateSourceLabels, candidateStageLabels, candidateStatusLabels, validateCandidate } from '../../utils/recruitment.ts';
 import JalaliDatePicker from './JalaliDatePicker.tsx';

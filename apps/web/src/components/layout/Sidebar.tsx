@@ -34,7 +34,7 @@ import {
 import { Badge, Box, Collapse, Divider, Drawer, List, ListItemButton, ListItemIcon, ListItemText, Typography } from '@mui/material';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { conversations } from '../../mock/data.ts';
+import { conversationRepository, conversations } from '../../services/repositories.ts';
 
 const drawerWidth = 280;
 type NavItem = { to: string; label: string; icon: React.ReactNode; children?: NavItem[] };
@@ -50,15 +50,14 @@ const groups: NavGroup[] = [
     { to: '/products', label: 'کالا و خدمات', icon: <Inventory2Outlined /> },
     { to: '/finance/suppliers', label: 'طرف حساب‌ها', icon: <GroupsOutlined />, children: [{ to: '/finance/suppliers', label: 'تأمین‌کنندگان', icon: <BusinessCenterOutlined /> }] },
     { to: '/finance/expenses', label: 'هزینه‌ها', icon: <ReceiptLongOutlined /> },
-    { to: '/finance/wages', label: 'دستمزد ها', icon: <PaidOutlined /> },
     { to: '/contracts', label: 'قراردادها', icon: <HandshakeOutlined /> },
-    { to: '/finance/bank-accounts', label: 'حساب‌های بانکی', icon: <AccountBalanceWalletOutlined /> },
+    { to: '/finance/payroll', label: 'حقوق‌های ثبت‌شده', icon: <AssessmentOutlined /> },
     { to: '/finance/reports', label: 'گزارش‌های مالی', icon: <AssessmentOutlined /> },
-    { to: '/finance/hesabfa', label: 'یکپارچه‌سازی حسابفا', icon: <SyncOutlined /> },
+    { to: '/finance/accounting', label: 'یکپارچه‌سازی حسابداری', icon: <SyncOutlined /> },
     { to: '/documents?section=finance', label: 'دبیرخانه مالی', icon: <DescriptionOutlined /> },
   ] },
-  { key: 'work', label: 'مدیریت کار', icon: <AssignmentOutlined />, children: [{ to: '/projects', label: 'پروژه‌ها', icon: <FolderOutlined /> }, { to: '/documents?section=projects', label: 'دبیرخانه پروژه‌ها', icon: <DescriptionOutlined /> }, { to: '/project-events', label: 'رویدادهای پروژه', icon: <TimelineOutlined /> }, { to: '/tasks/labels', label: 'لیبل‌های وظایف', icon: <WidgetsOutlined /> }, { to: '/calendar', label: 'تقویم', icon: <CalendarMonthOutlined /> }, { to: '/goals', label: 'اهداف', icon: <TimelineOutlined /> }, { to: '/timesheets', label: 'ساعات کاری', icon: <TodayOutlined /> }, { to: '/knowledge', label: 'پایگاه دانش', icon: <WidgetsOutlined /> }] },
-  { key: 'hr', label: 'منابع انسانی', icon: <BadgeOutlined />, children: [{ to: '/hr', label: 'نمای کلی', icon: <BadgeOutlined /> }, { to: '/hr/employees', label: 'کارکنان و کاربران', icon: <GroupsOutlined /> }, { to: '/documents?section=hr', label: 'دبیرخانه منابع انسانی', icon: <DescriptionOutlined /> }, { to: '/hr/attendance', label: 'حضور و غیاب', icon: <TodayOutlined /> }, { to: '/hr/leaves', label: 'مرخصی‌ها', icon: <EventAvailableOutlined /> }, { to: '/hr/missions', label: 'ماموریت‌ها', icon: <WorkHistoryOutlined /> }, { to: '/hr/performance', label: 'ارزیابی عملکرد', icon: <AssessmentOutlined /> }, { to: '/hr/recruitment', label: 'استخدام', icon: <BusinessCenterOutlined /> }] },
+  { key: 'work', label: 'مدیریت کار', icon: <AssignmentOutlined />, children: [{ to: '/projects', label: 'پروژه‌ها', icon: <FolderOutlined /> }, { to: '/documents?section=projects', label: 'دبیرخانه پروژه‌ها', icon: <DescriptionOutlined /> }, { to: '/project-events', label: 'رویدادهای پروژه', icon: <TimelineOutlined /> }, { to: '/meetings', label: 'جلسات', icon: <EventAvailableOutlined /> }, { to: '/tasks/labels', label: 'لیبل‌های وظایف', icon: <WidgetsOutlined /> }, { to: '/calendar', label: 'تقویم', icon: <CalendarMonthOutlined /> }, { to: '/goals', label: 'اهداف', icon: <TimelineOutlined /> }, { to: '/timesheets', label: 'ساعات کاری', icon: <TodayOutlined /> }, { to: '/knowledge', label: 'پایگاه دانش', icon: <WidgetsOutlined /> }] },
+  { key: 'hr', label: 'منابع انسانی', icon: <BadgeOutlined />, children: [{ to: '/hr', label: 'نمای کلی', icon: <BadgeOutlined /> }, { to: '/hr/employees', label: 'کارکنان و کاربران', icon: <GroupsOutlined /> }, { to: '/documents?section=hr', label: 'دبیرخانه منابع انسانی', icon: <DescriptionOutlined /> }, { to: '/hr/attendance', label: 'حضور و غیاب', icon: <TodayOutlined /> }, { to: '/hr/leaves', label: 'مرخصی‌ها', icon: <EventAvailableOutlined /> }, { to: '/hr/missions', label: 'ماموریت‌ها', icon: <WorkHistoryOutlined /> }, { to: '/hr/payroll', label: 'حقوق و مزایا', icon: <PaidOutlined /> }, { to: '/hr/performance', label: 'ارزیابی عملکرد', icon: <AssessmentOutlined /> }, { to: '/hr/recruitment', label: 'استخدام', icon: <BusinessCenterOutlined /> }] },
   { key: 'support', label: 'پشتیبانی', icon: <ConfirmationNumberOutlined />, children: [{ to: '/tickets', label: 'تیکت‌ها', icon: <ConfirmationNumberOutlined /> }] },
   { key: 'monitoring', label: 'مانیتورینگ', icon: <MonitorHeartOutlined />, children: [{ to: '/monitoring?view=dashboard', label: 'داشبورد', icon: <MonitorHeartOutlined /> }, { to: '/monitoring?view=sites', label: 'سایت‌ها و برنامه‌ها', icon: <WidgetsOutlined /> }, { to: '/monitoring?view=categories', label: 'دسته‌بندی‌ها', icon: <WidgetsOutlined /> }, { to: '/monitoring?view=efficiency', label: 'بهره‌وری و اهداف', icon: <AssessmentOutlined /> }, { to: '/monitoring?view=away', label: 'زمان بیکاری', icon: <TimelineOutlined /> }, { to: '/monitoring?view=screenshots', label: 'تصاویر صفحه', icon: <DescriptionOutlined /> }, { to: '/monitoring?view=attendance', label: 'حضور بر اساس رایانه', icon: <TodayOutlined /> }, { to: '/monitoring?view=settings', label: 'تنظیمات مانیتورینگ', icon: <SecurityOutlined /> }] },
   { key: 'reports', label: 'گزارش‌ها', icon: <AssessmentOutlined />, children: [{ to: '/reports?view=sales', label: 'فروش', icon: <AssessmentOutlined /> }, { to: '/reports?view=profit', label: 'هزینه‌ها در مقایسه با درآمد', icon: <AssessmentOutlined /> }, { to: '/reports?view=leads', label: 'مشتریان احتمالی', icon: <AssessmentOutlined /> }, { to: '/reports?view=timesheets', label: 'ساعات کاری', icon: <AssessmentOutlined /> }, { to: '/reports?view=knowledge', label: 'مقالات پایگاه دانش', icon: <AssessmentOutlined /> }, { to: '/reports?view=contacts', label: 'گزارش تماس‌ها', icon: <AssessmentOutlined /> }] },
@@ -93,13 +92,9 @@ export default function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; 
     next[key] = true;
     return next;
   });
-  const [chatUnread, setChatUnread] = useState(() => {
-    try { const saved = localStorage.getItem('trileez-chat-state-v1'); return saved ? (JSON.parse(saved).conversations ?? []).reduce((sum: number, c: { unreadCount?: number }) => sum + (c.unreadCount ?? 0), 0) : conversations.reduce((sum, c) => sum + c.unreadCount, 0); } catch { return conversations.reduce((sum, c) => sum + c.unreadCount, 0); }
-  });
+  const [chatUnread, setChatUnread] = useState(() => conversations.reduce((sum, conversation) => sum + conversation.unreadCount, 0));
   useEffect(() => {
-    const refresh = () => { try { const saved = localStorage.getItem('trileez-chat-state-v1'); setChatUnread(saved ? (JSON.parse(saved).conversations ?? []).reduce((sum: number, c: { unreadCount?: number }) => sum + (c.unreadCount ?? 0), 0) : 0); } catch { setChatUnread(0); } };
-    window.addEventListener('trileez-chat-updated', refresh);
-    return () => window.removeEventListener('trileez-chat-updated', refresh);
+    return conversationRepository.subscribe((items) => setChatUnread(items.reduce((sum, conversation) => sum + conversation.unreadCount, 0)));
   }, []);
 
   const go = (to: string) => { navigate(to); onClose(); };
@@ -142,7 +137,7 @@ export default function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; 
     </Box>
   );
 
-  return <><Drawer anchor="right" variant="temporary" open={mobileOpen} onClose={onClose} ModalProps={{ keepMounted: true }} sx={{ display: { xs: 'block', md: 'none' }, '& .MuiDrawer-paper': { width: drawerWidth, maxWidth: '86vw', boxSizing: 'border-box' } }}>{content}</Drawer><Drawer anchor="right" variant="permanent" open sx={{ display: { xs: 'none', md: 'block' }, height: '100%', '& .MuiDrawer-paper': { width: drawerWidth, boxSizing: 'border-box', position: 'relative', height: '100%' } }}>{content}</Drawer></>;
+  return <><Drawer anchor="right" variant="temporary" open={mobileOpen} onClose={onClose} ModalProps={{ keepMounted: true }} sx={{ display: { xs: 'block', md: 'none' }, '& .MuiDrawer-paper': { width: drawerWidth, maxWidth: '86vw', boxSizing: 'border-box' } }}>{content}</Drawer><Drawer anchor="right" variant="permanent" open sx={{ display: { xs: 'none', md: 'block' }, height: '100%', overflow: 'hidden', '& .MuiDrawer-paper': { width: drawerWidth, boxSizing: 'border-box', position: 'relative', height: '100%', overflow: 'hidden' } }}>{content}</Drawer></>;
 }
 
 export { drawerWidth };

@@ -1,6 +1,6 @@
 import { Alert, Autocomplete, Box, Dialog, DialogActions, DialogContent, DialogTitle, Button, FormControl, FormHelperText, InputLabel, MenuItem, Select, Slider, Stack, TextField, Typography } from '@mui/material';
 import { useState } from 'react';
-import { customers, users } from '../../mock/data.ts';
+import { customers, users } from '../../services/repositories.ts';
 import { customerDisplayName } from '../../utils/customer.ts';
 import { defaultProjectTags, normalizeProjectGrade, normalizeProjectTags, projectGradeLabel, projectStatusLabels } from '../../utils/project.ts';
 import type { Project, ProjectStatus } from '../../types/index.ts';

@@ -1,32 +1,31 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
-// Prototype finance screens intentionally keep presentation logic close to mock data.
+// Transitional finance screens keep presentation logic close to the API-backed repositories.
 // @ts-nocheck
 import { SyncOutlined } from '@mui/icons-material';
-import { Alert, Box, Button, Card, CardContent, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Divider, LinearProgress, MenuItem, Select, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, Chip, LinearProgress, MenuItem, Select, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material';
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import PageHeader from '../components/common/PageHeader.tsx';
 import QuickCreateDialog from '../components/common/QuickCreateDialog.tsx';
-import { bankAccounts, contracts, customers, expenses, invoices, installments, payments, projects, suppliers, tasks, timesheets, users } from '../mock/data.ts';
-import { formatCurrency, formatDate, getTimesheetBillingStatusLabel, getTimesheetStatusLabel, normalizeTimesheetBillingStatus, normalizeTimesheetStatus, timesheetBillingStatusLabel, timesheetBillingStatusOptions, timesheetStatusOptions } from '../utils/format.ts';
+import { contracts, customers, expenses, invoices, installments, payments, projects, suppliers, timesheets } from '../services/repositories.ts';
+import { formatCurrency, formatDate } from '../utils/format.ts';
 import { invoicePaidAmount, laborCost, lineItemTotals } from '../utils/finance.ts';
 import { syncStateLabel } from '../services/accountingProvider.ts';
 import DataTable from '../components/common/DataTable.tsx';
 import CsvToolbar from '../components/common/CsvToolbar.tsx';
-import { expenseRepository, supplierRepository, timesheetRepository, wageRepository } from '../services/repositories.ts';
+import { expenseRepository, supplierRepository } from '../services/repositories.ts';
 import { useApp } from '../context/AppContext.tsx';
-import { calculateWageLine, eligibleTimesheets, issueWage, wagePeriodOf } from '../services/wageService.ts';
 
 const normalizeDigits = (value: string) => value.replace(/[۰-۹]/g, (digit) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit))).replace(/[٬,]/g, '');
 const csvField = (row: Record<string, string>, ...keys: string[]) => keys.map((key) => row[key]).find((value) => value !== undefined && value !== '') ?? '';
 const resolveProjectId = (value: string) => projects.find((project) => project.id === value || project.name === value || `${project.code ?? ''} — ${project.name}` === value)?.id;
-function importFinanceRows(rows: Record<string, string>[], create: (row: Record<string, string>) => void, required: string[]) {
+async function importFinanceRows(rows: Record<string, string>[], create: (row: Record<string, string>) => unknown | Promise<unknown>, required: string[]) {
   const errors: string[] = []; let created = 0;
-  rows.forEach((row, index) => {
+  for (const [index, row] of rows.entries()) {
     const missing = required.filter((key) => !csvField(row, key).trim());
-    if (missing.length) { errors.push(`ردیف ${index + 2}: ستون‌های الزامی کامل نیستند (${missing.join('، ')})`); return; }
-    try { create(row); created += 1; } catch { errors.push(`ردیف ${index + 2}: قالب داده قابل پردازش نیست`); }
-  });
+    if (missing.length) { errors.push(`ردیف ${index + 2}: ستون‌های الزامی کامل نیستند (${missing.join('، ')})`); continue; }
+    try { await create(row); created += 1; } catch (error) { errors.push(`ردیف ${index + 2}: ${error instanceof Error ? error.message : 'ذخیره در سرور انجام نشد'}`); }
+  }
   return { created, errors };
 }
 
@@ -36,14 +35,16 @@ const statusLabel: Record<string, string> = { paid: 'تسویه شده', partial
 const tone = (s: string) => ['paid', 'approved', 'synced'].includes(s) ? 'success' : ['overdue', 'error'].includes(s) ? 'error' : ['partial', 'due', 'changed', 'pending'].includes(s) ? 'warning' : 'default';
 const chip = (s: string) => <Chip size="small" color={tone(s) as 'default'} label={statusLabel[s] ?? s} />;
 function Shell({ title, subtitle, children, action }: { title: string; subtitle: string; children: ReactNode; action?: ReactNode }) {
-  const fields = title.includes('هزینه') ? ['عنوان هزینه', 'دسته‌بندی', 'مبلغ', 'تاریخ', 'پروژه', 'روش پرداخت', 'توضیحات'] : title.includes('مطالبات') ? ['فاکتور', 'مشتری', 'پروژه', 'مبلغ پیگیری', 'تاریخ سررسید', 'توضیحات'] : title.includes('تأمین') ? ['نام تأمین‌کننده', 'شخص تماس', 'تلفن', 'ایمیل', 'مانده حساب'] : title.includes('حساب‌های بانکی') ? ['نام بانک', 'عنوان حساب', 'شماره حساب', 'موجودی اولیه'] : title.includes('گزارش') ? [] : ['عنوان', 'مبلغ', 'توضیحات'];
-  return <Box><PageHeader title={title} subtitle={subtitle} crumbs={['تری‌لیز', 'امور مالی', title]} actions={action ?? (fields.length ? <QuickCreateDialog title={`ایجاد ${title}`} fields={fields} /> : undefined)} />{children}</Box>;
+  const fields = title.includes('هزینه') ? ['عنوان هزینه', 'دسته‌بندی', 'مبلغ', 'تاریخ', 'پروژه', 'روش پرداخت', 'توضیحات'] : title.includes('مطالبات') ? ['فاکتور', 'مشتری', 'پروژه', 'مبلغ پیگیری', 'تاریخ سررسید', 'توضیحات'] : title.includes('تأمین') ? ['نام تأمین‌کننده', 'شخص تماس', 'تلفن', 'ایمیل', 'مانده حساب'] : title.includes('گزارش') ? [] : ['عنوان', 'مبلغ', 'توضیحات'];
+  const onSave = title === 'هزینه‌ها' ? (values: Record<string, string>) => expenseRepository.create({ title: values['عنوان هزینه'], category: values['دسته‌بندی'] || 'سایر', projectId: resolveProjectId(values['پروژه']), amount: Number(normalizeDigits(values['مبلغ'] || '0')), date: values['تاریخ'] || new Date().toISOString(), paymentMethod: values['روش پرداخت'] || 'انتقال بانکی', description: values['توضیحات'] || '' }) : title === 'تأمین‌کنندگان' ? (values: Record<string, string>) => supplierRepository.create({ name: values['نام تأمین‌کننده'], contactName: values['شخص تماس'] || undefined, phone: values['تلفن'] || undefined, email: values['ایمیل'] || undefined, type: 'supplier' }) : undefined;
+  const readOnly = ['داشبورد مالی', 'مطالبات', 'گزارش‌های مالی', 'یکپارچه‌سازی حسابداری'].some((item) => title.includes(item));
+  return <Box><PageHeader title={title} subtitle={subtitle} crumbs={['تری‌لیز', 'امور مالی', title]} actions={action ?? (!readOnly && fields.length ? <QuickCreateDialog title={`ایجاد ${title}`} fields={fields} onSave={onSave} /> : undefined)} />{children}</Box>;
 }
 function Stats({ items }: { items: { label: string; value: string; color?: string }[] }) { return <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: `repeat(${items.length},1fr)` }, gap: 1.5, mb: 2 }}>{items.map((x) => <Card key={x.label}><CardContent sx={{ p: 1.7, '&:last-child': { pb: 1.7 } }}><Typography variant="caption" color="text.secondary">{x.label}</Typography><Typography variant="h6" sx={{ fontWeight: 800, color: x.color ?? 'text.primary', mt: .5 }}>{x.value}</Typography></CardContent></Card>)}</Box>; }
 
 export function FinanceDashboardPage() {
   const sales = invoices.reduce((s, x) => s + lineItemTotals(x.items).total, 0), received = invoices.reduce((s, invoice) => s + invoicePaidAmount(invoice, payments), 0), cost = expenses.reduce((s, x) => s + x.amount, 0), due = installments.filter((x) => x.status !== 'paid').reduce((s, x) => s + x.amount - x.paidAmount, 0), labor = laborCost(timesheets), activeContracts = contracts.filter((contract) => contract.status === 'active').reduce((sum, contract) => sum + contract.amount, 0);
-  return <Shell title="داشبورد مالی" subtitle="نمای مدیریتی فروش، دریافت، هزینه و نقدینگی"><Stats items={[{ label: 'فروش این ماه', value: formatCurrency(sales), color: 'success.main' }, { label: 'دریافت تاییدشده', value: formatCurrency(received), color: 'success.main' }, { label: 'مطالبات', value: formatCurrency(sales - received), color: 'warning.main' }, { label: 'هزینه‌ها', value: formatCurrency(cost), color: 'error.main' }, { label: 'هزینه نیروی انسانی', value: formatCurrency(labor), color: 'error.main' }, { label: 'ارزش پروژه‌های فعال', value: formatCurrency(activeContracts), color: 'primary.main' }]} /><Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', lg: '1.3fr 1fr' } }}><Card><CardContent><Typography sx={{ fontWeight: 800, mb: 2 }}>فروش و دریافت در برابر هزینه</Typography><Stack spacing={1.5}><Box><Stack direction="row" justifyContent="space-between"><Typography variant="body2">فروش</Typography><Typography variant="body2" fontWeight={700}>{formatCurrency(sales)}</Typography></Stack><LinearProgress value={100} variant="determinate" color="primary" /></Box><Box><Stack direction="row" justifyContent="space-between"><Typography variant="body2">دریافت تاییدشده</Typography><Typography variant="body2" fontWeight={700}>{formatCurrency(received)}</Typography></Stack><LinearProgress value={sales ? Math.min(100, received / sales * 100) : 0} variant="determinate" color="success" /></Box><Box><Stack direction="row" justifyContent="space-between"><Typography variant="body2">هزینه (با نیروی انسانی)</Typography><Typography variant="body2" fontWeight={700}>{formatCurrency(cost + labor)}</Typography></Stack><LinearProgress value={sales ? Math.min(100, (cost + labor) / sales * 100) : 0} variant="determinate" color="warning" /></Box></Stack></CardContent></Card><Card><CardContent><Typography sx={{ fontWeight: 800, mb: 1.5 }}>اقساط نزدیک و مطالبات معوق</Typography>{installments.filter((x) => x.status !== 'paid').slice(0, 4).map((x) => <Stack key={x.id} direction="row" justifyContent="space-between" sx={{ py: 1, borderBottom: '1px solid', borderColor: 'divider' }}><Box><Typography variant="body2" fontWeight={700}>{customerName(x.customerId)}</Typography><Typography variant="caption" color="text.secondary">قسط {x.number} • {formatDate(x.dueDate)}</Typography></Box><Box textAlign="left">{formatCurrency(x.amount - x.paidAmount)}<br />{chip(x.status)}</Box></Stack>)}</CardContent></Card></Box><Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' }, mt: 2 }}><Card><CardContent><Typography sx={{ fontWeight: 800, mb: 1 }}>فاکتورهای اخیر</Typography>{invoices.map((x) => <Stack key={x.id} direction="row" justifyContent="space-between" sx={{ py: 1, borderBottom: '1px solid', borderColor: 'divider' }}><Typography fontWeight={700}>{x.number}<br /><Typography component="span" variant="caption" color="text.secondary">{customerName(x.customerId)}</Typography></Typography><Box textAlign="left">{formatCurrency(lineItemTotals(x.items).total)}<br />{chip(x.status)}</Box></Stack>)}</CardContent></Card><Card><CardContent><Typography sx={{ fontWeight: 800, mb: 1 }}>سود تقریبی پروژه‌ها</Typography>{projects.slice(0, 4).map((p) => { const rev = invoices.filter((i) => i.projectId === p.id).reduce((s, i) => s + lineItemTotals(i.items).total, 0); const exp = expenses.filter((e) => e.projectId === p.id).reduce((s, e) => s + e.amount, 0); const projectLabor = laborCost(timesheets.filter((entry) => entry.projectId === p.id)); return <Stack key={p.id} direction="row" justifyContent="space-between" sx={{ py: 1, borderBottom: '1px solid', borderColor: 'divider' }}><Box><Typography fontWeight={700}>{p.name}</Typography><Typography variant="caption" color="text.secondary">{customerName(p.customerId)}</Typography></Box><Typography color={rev - exp - projectLabor >= 0 ? 'success.main' : 'error.main'} fontWeight={800}>{formatCurrency(rev - exp - projectLabor)}</Typography></Stack>; })}</CardContent></Card></Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>مانده مطالبات قابل پیگیری: {formatCurrency(due)} • وضعیت اتصال حسابفا: {syncStateLabel.local}</Typography></Shell>;
+  return <Shell title="داشبورد مالی" subtitle="نمای مدیریتی فروش، دریافت، هزینه و نقدینگی"><Stats items={[{ label: 'فروش این ماه', value: formatCurrency(sales), color: 'success.main' }, { label: 'دریافت تاییدشده', value: formatCurrency(received), color: 'success.main' }, { label: 'مطالبات', value: formatCurrency(sales - received), color: 'warning.main' }, { label: 'هزینه‌ها', value: formatCurrency(cost), color: 'error.main' }, { label: 'هزینه نیروی انسانی', value: formatCurrency(labor), color: 'error.main' }, { label: 'ارزش پروژه‌های فعال', value: formatCurrency(activeContracts), color: 'primary.main' }]} /><Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', lg: '1.3fr 1fr' } }}><Card><CardContent><Typography sx={{ fontWeight: 800, mb: 2 }}>فروش و دریافت در برابر هزینه</Typography><Stack spacing={1.5}><Box><Stack direction="row" justifyContent="space-between"><Typography variant="body2">فروش</Typography><Typography variant="body2" fontWeight={700}>{formatCurrency(sales)}</Typography></Stack><LinearProgress value={100} variant="determinate" color="primary" /></Box><Box><Stack direction="row" justifyContent="space-between"><Typography variant="body2">دریافت تاییدشده</Typography><Typography variant="body2" fontWeight={700}>{formatCurrency(received)}</Typography></Stack><LinearProgress value={sales ? Math.min(100, received / sales * 100) : 0} variant="determinate" color="success" /></Box><Box><Stack direction="row" justifyContent="space-between"><Typography variant="body2">هزینه (با نیروی انسانی)</Typography><Typography variant="body2" fontWeight={700}>{formatCurrency(cost + labor)}</Typography></Stack><LinearProgress value={sales ? Math.min(100, (cost + labor) / sales * 100) : 0} variant="determinate" color="warning" /></Box></Stack></CardContent></Card><Card><CardContent><Typography sx={{ fontWeight: 800, mb: 1.5 }}>اقساط نزدیک و مطالبات معوق</Typography>{installments.filter((x) => x.status !== 'paid').slice(0, 4).map((x) => <Stack key={x.id} direction="row" justifyContent="space-between" sx={{ py: 1, borderBottom: '1px solid', borderColor: 'divider' }}><Box><Typography variant="body2" fontWeight={700}>{customerName(x.customerId)}</Typography><Typography variant="caption" color="text.secondary">قسط {x.number} • {formatDate(x.dueDate)}</Typography></Box><Box textAlign="left">{formatCurrency(x.amount - x.paidAmount)}<br />{chip(x.status)}</Box></Stack>)}</CardContent></Card></Box><Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' }, mt: 2 }}><Card><CardContent><Typography sx={{ fontWeight: 800, mb: 1 }}>فاکتورهای اخیر</Typography>{invoices.map((x) => <Stack key={x.id} direction="row" justifyContent="space-between" sx={{ py: 1, borderBottom: '1px solid', borderColor: 'divider' }}><Typography fontWeight={700}>{x.number}<br /><Typography component="span" variant="caption" color="text.secondary">{customerName(x.customerId)}</Typography></Typography><Box textAlign="left">{formatCurrency(lineItemTotals(x.items).total)}<br />{chip(x.status)}</Box></Stack>)}</CardContent></Card><Card><CardContent><Typography sx={{ fontWeight: 800, mb: 1 }}>سود تقریبی پروژه‌ها</Typography>{projects.slice(0, 4).map((p) => { const rev = invoices.filter((i) => i.projectId === p.id).reduce((s, i) => s + lineItemTotals(i.items).total, 0); const exp = expenses.filter((e) => e.projectId === p.id).reduce((s, e) => s + e.amount, 0); const projectLabor = laborCost(timesheets.filter((entry) => entry.projectId === p.id)); return <Stack key={p.id} direction="row" justifyContent="space-between" sx={{ py: 1, borderBottom: '1px solid', borderColor: 'divider' }}><Box><Typography fontWeight={700}>{p.name}</Typography><Typography variant="caption" color="text.secondary">{customerName(p.customerId)}</Typography></Box><Typography color={rev - exp - projectLabor >= 0 ? 'success.main' : 'error.main'} fontWeight={800}>{formatCurrency(rev - exp - projectLabor)}</Typography></Stack>; })}</CardContent></Card></Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>مانده مطالبات قابل پیگیری: {formatCurrency(due)} • وضعیت اتصال حسابداری: {syncStateLabel.local}</Typography></Shell>;
 }
 
 export function ExpensesPage() {
@@ -76,161 +77,22 @@ function ModernSuppliersPage() {
 export function ReceivablesPage() { return <ModernReceivablesPage />; }
 export function SuppliersPage() { return <ModernSuppliersPage />; }
 
-export function BillableWorkPage() {
-  const { user } = useApp();
-  const [rows, setRows] = useState(() => timesheetRepository.list());
-  const [selectedRows, setSelectedRows] = useState<typeof rows>([]);
-  const [message, setMessage] = useState<{ severity: 'success' | 'error'; text: string } | null>(null);
-  const [wagePreview, setWagePreview] = useState<{ groups: Array<{ employeeId: string; employeeName: string; period: string; hours: number; amount: number; entryCount: number }>; totalHours: number; totalAmount: number; invalidCount: number } | null>(null);
-  useEffect(() => timesheetRepository.subscribe(setRows), []);
-  useEffect(() => {
-    timesheetRepository.list().forEach((entry) => {
-      const status = normalizeTimesheetStatus(entry.status);
-      const billing = normalizeTimesheetBillingStatus(entry.billingStatus ?? 'payment_queued');
-      if (status === 'approved' && !entry.wageRecordId && ['suspended', 'purchase_invoice_queued'].includes(billing)) {
-        timesheetRepository.update(entry.id, { status: 'approved', billingStatus: 'payment_queued' });
-      }
-    });
-  }, []);
-  useEffect(() => {
-    const processed = new Map(wageRepository.list().flatMap((record) => record.lineItems.map((line) => [line.timeEntryId, record.id] as const)));
-    timesheetRepository.list().forEach((entry) => {
-      const wageId = processed.get(entry.id);
-      if (wageId && (entry.wageRecordId !== wageId || normalizeTimesheetBillingStatus(entry.billingStatus ?? '') !== 'purchase_invoice_registered')) {
-        timesheetRepository.update(entry.id, { wageRecordId: wageId, paymentStatus: 'queued', billingStatus: 'purchase_invoice_registered' });
-      }
-    });
-  }, []);
-  useEffect(() => setSelectedRows((current) => current.filter((selected) => rows.some((row) => row.id === selected.id))), [rows]);
-  const billable = rows.filter((row) => row.billable);
-  const canonicalPayableRows = () => {
-    if (!selectedRows.length) return { payableRows: [], unavailable: [] };
-    const canonicalSelectedRows = selectedRows.map((row) => {
-      const normalizedStatus = normalizeTimesheetStatus(row.status);
-      const normalizedBillingStatus = normalizeTimesheetBillingStatus(row.billingStatus ?? 'payment_queued');
-      if (row.status !== normalizedStatus || row.billingStatus !== normalizedBillingStatus) {
-        timesheetRepository.update(row.id, { status: normalizedStatus, billingStatus: normalizedBillingStatus });
-      }
-      return { ...row, status: normalizedStatus, billingStatus: normalizedBillingStatus };
-    });
-    const eligible = new Set<string>();
-    canonicalSelectedRows.forEach((row) => eligibleTimesheets(row.employeeId, wagePeriodOf(row.date)).forEach((entry) => eligible.add(entry.id)));
-    const unavailable = canonicalSelectedRows.filter((row) => !eligible.has(row.id));
-    const payableRows = canonicalSelectedRows.filter((row) => eligible.has(row.id));
-    return { payableRows, unavailable };
-  };
-  const prepareWagePreview = () => {
-    const { payableRows, unavailable } = canonicalPayableRows();
-    if (!payableRows.length) {
-      setMessage({ severity: 'error', text: 'هیچ‌یک از ردیف‌های انتخاب‌شده برای صدور فاکتور دستمزد واجد شرایط نیستند.' });
-      return;
-    }
-    const groups = new Map<string, { employeeId: string; employeeName: string; period: string; hours: number; amount: number; entryCount: number }>();
-    payableRows.forEach((row) => {
-      const task = tasks.find((item) => item.id === row.taskId);
-      if (!task) return;
-      const line = calculateWageLine(row, task);
-      const period = wagePeriodOf(row.date);
-      const key = `${row.employeeId}:${period}`;
-      const current = groups.get(key) ?? { employeeId: row.employeeId, employeeName: users.find((item) => item.id === row.employeeId)?.name ?? '—', period, hours: 0, amount: 0, entryCount: 0 };
-      current.hours += line.hours;
-      current.amount += line.amount;
-      current.entryCount += 1;
-      groups.set(key, current);
-    });
-    const groupList = Array.from(groups.values());
-    setWagePreview({ groups: groupList, totalHours: groupList.reduce((sum, group) => sum + group.hours, 0), totalAmount: groupList.reduce((sum, group) => sum + group.amount, 0), invalidCount: unavailable.length });
-  };
-  const issueSelectedWages = () => {
-    const { payableRows, unavailable } = canonicalPayableRows();
-    if (!payableRows.length) {
-      setWagePreview(null);
-      setMessage({ severity: 'error', text: 'هیچ‌یک از ردیف‌های انتخاب‌شده برای صدور فاکتور دستمزد واجد شرایط نیستند.' });
-      return;
-    }
-    try {
-      const groups = new Map<string, typeof rows>();
-      payableRows.forEach((row) => {
-        const key = `${row.employeeId}:${wagePeriodOf(row.date)}`;
-        groups.set(key, [...(groups.get(key) ?? []), row]);
-      });
-      let issued = 0;
-      groups.forEach((group) => {
-        const record = issueWage({ actor: user, employeeId: group[0].employeeId, period: wagePeriodOf(group[0].date), timeEntryIds: group.map((row) => row.id) });
-        issued += record.totalAmount;
-      });
-      setSelectedRows([]);
-      const skipped = unavailable.length ? ` ${unavailable.length} ردیف نامعتبر نادیده گرفته شد.` : '';
-      setMessage({ severity: 'success', text: `فاکتور دستمزد ${groups.size} دوره/کارمند به مبلغ ${formatCurrency(issued)} در صف پرداخت قرار گرفت.${skipped}` });
-    } catch (error) {
-      setMessage({ severity: 'error', text: error instanceof Error ? error.message : 'صدور فاکتور دستمزد انجام نشد.' });
-    }
-  };
-  const csvColumns = [
-    { key: 'employee', label: 'کارمند', value: (row) => users.find((user) => user.id === row.employeeId)?.name ?? '—' },
-    { key: 'project', label: 'پروژه', value: (row) => projectName(row.projectId) },
-    { key: 'task', label: 'وظیفه', value: (row) => tasks.find((task) => task.id === row.taskId)?.title ?? '—' },
-    { key: 'date', label: 'تاریخ', value: (row) => row.date },
-    { key: 'hours', label: 'ساعت', value: (row) => row.hours },
-    { key: 'cost', label: 'هزینه', value: (row) => row.calculatedCost ?? row.hours * (row.hourlyRate ?? 200000) },
-    { key: 'status', label: 'وضعیت کار', value: (row) => getTimesheetStatusLabel(row.status) },
-    { key: 'billingStatus', label: 'وضعیت مالی', value: (row) => getTimesheetBillingStatusLabel(row.billingStatus ?? 'payment_queued') },
-  ];
-  return <Shell title="دستمزد ها" subtitle="صدور فاکتور دستمزد بر اساس ساعات کاری تأییدشده و نرخ وظیفه" action={<Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}><CsvToolbar rows={billable} entityLabel="دستمزد ها" filename="wages.csv" columns={csvColumns} /><Button variant="contained" color="success" disabled={!selectedRows.length} onClick={prepareWagePreview} sx={{ fontWeight: 800, boxShadow: selectedRows.length ? 3 : undefined }}>صدور فاکتور دستمزد و قرار دادن در صف پرداخت{selectedRows.length ? ` (${selectedRows.length})` : ''}</Button></Stack>}>
-    {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}
-    <Stats items={[
-      { label: 'کل ساعات قابل صورتحساب', value: `${billable.reduce((sum, row) => sum + row.hours, 0)} ساعت` },
-      { label: 'کار تاییدشده', value: `${billable.filter((row) => row.status === 'approved').reduce((sum, row) => sum + row.hours, 0)} ساعت`, color: 'success.main' },
-      { label: 'پرداخت‌نشده', value: formatCurrency(billable.filter((row) => row.billingStatus !== 'paid').reduce((sum, row) => sum + (row.calculatedCost ?? row.hours * (row.hourlyRate ?? 200000)), 0)), color: 'warning.main' },
-      { label: 'پرداخت‌شده', value: formatCurrency(billable.filter((row) => row.billingStatus === 'paid').reduce((sum, row) => sum + (row.calculatedCost ?? row.hours * (row.hourlyRate ?? 200000)), 0)), color: 'success.main' },
-    ]} />
-    <Card sx={{ p: 1 }}><DataTable rows={billable} getRowId={(row) => row.id} selectable onSelectionChange={setSelectedRows} initialColumnFilters={{
-      status: ['approved'],
-      billingStatus: ['payment_queued'],
-    }} searchPlaceholder="جستجوی کارمند، پروژه یا وظیفه..." filters={[
-      { key: 'status', label: 'وضعیت کار', options: timesheetStatusOptions, value: (row) => normalizeTimesheetStatus(row.status) },
-      { key: 'billingStatus', label: 'وضعیت مالی', options: timesheetBillingStatusOptions, value: (row) => row.billingStatus ?? 'suspended' },
-    ]} columns={[
-      { key: 'employee', label: 'کارمند', value: (row) => users.find((user) => user.id === row.employeeId)?.name ?? '—' },
-      { key: 'project', label: 'پروژه', value: (row) => projectName(row.projectId), groupable: true },
-      { key: 'task', label: 'وظیفه', value: (row) => tasks.find((task) => task.id === row.taskId)?.title ?? '—' },
-      { key: 'date', label: 'تاریخ', value: (row) => row.date, render: (row) => formatDate(row.date) },
-      { key: 'hours', label: 'ساعت', value: (row) => row.hours, aggregate: 'sum', render: (row) => `${row.hours} ساعت` },
-      { key: 'rate', label: 'نرخ ساعتی', value: (row) => row.hourlyRate ?? 200000, render: (row) => formatCurrency(row.hourlyRate ?? 200000) },
-      { key: 'cost', label: 'هزینه کار', value: (row) => row.calculatedCost ?? row.hours * (row.hourlyRate ?? 200000), aggregate: 'sum', render: (row) => formatCurrency(row.calculatedCost ?? row.hours * (row.hourlyRate ?? 200000)) },
-      { key: 'status', label: 'وضعیت کار', value: (row) => normalizeTimesheetStatus(row.status), filterLabel: (value) => getTimesheetStatusLabel(value), render: (row) => <Chip size="small" color={normalizeTimesheetStatus(row.status) === 'approved' ? 'success' : normalizeTimesheetStatus(row.status) === 'rejected' ? 'error' : 'warning'} label={getTimesheetStatusLabel(row.status)} /> },
-      { key: 'billingStatus', label: 'وضعیت مالی', value: (row) => normalizeTimesheetBillingStatus(row.billingStatus ?? 'payment_queued'), filterLabel: (value) => getTimesheetBillingStatusLabel(value), render: (row) => <Chip size="small" color={normalizeTimesheetBillingStatus(row.billingStatus ?? 'payment_queued') === 'paid' ? 'success' : normalizeTimesheetBillingStatus(row.billingStatus ?? 'payment_queued') === 'suspended' ? 'default' : 'warning'} label={getTimesheetBillingStatusLabel(row.billingStatus ?? 'payment_queued')} /> },
-      { key: 'description', label: 'شرح', value: (row) => row.description },
-    ]} /></Card>
-    <Dialog open={Boolean(wagePreview)} onClose={() => setWagePreview(null)} fullWidth maxWidth="sm" dir="rtl">
-      <DialogTitle sx={{ fontWeight: 800 }}>تأیید صدور فاکتور دستمزد</DialogTitle>
-      <DialogContent dividers>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>پیش از ثبت نهایی، خلاصه کارکرد و مبلغ هر کارمند را بررسی کنید.</Typography>
-        <Table size="small">
-          <TableHead><TableRow><TableCell>کارمند</TableCell><TableCell>دوره</TableCell><TableCell align="right">ساعت</TableCell><TableCell align="right">مبلغ</TableCell></TableRow></TableHead>
-          <TableBody>{wagePreview?.groups.map((group) => <TableRow key={`${group.employeeId}-${group.period}`}><TableCell><Typography fontWeight={700}>{group.employeeName}</Typography><Typography variant="caption" color="text.secondary">{group.entryCount} ردیف کاری</Typography></TableCell><TableCell>{group.period}</TableCell><TableCell align="right">{group.hours.toLocaleString('fa-IR')} ساعت</TableCell><TableCell align="right">{formatCurrency(group.amount)}</TableCell></TableRow>)}</TableBody>
-        </Table>
-        {wagePreview?.invalidCount ? <Alert severity="warning" sx={{ mt: 1.5 }}>تعداد {wagePreview.invalidCount.toLocaleString('fa-IR')} ردیف نامعتبر در صدور نهایی نادیده گرفته می‌شود.</Alert> : null}
-        <Divider sx={{ my: 1.5 }} />
-        <Stack direction="row" justifyContent="space-between" sx={{ fontWeight: 800 }}><Typography>جمع کل ساعات</Typography><Typography>{wagePreview?.totalHours.toLocaleString('fa-IR')} ساعت</Typography></Stack>
-        <Stack direction="row" justifyContent="space-between" sx={{ fontWeight: 800, mt: .75 }}><Typography>جمع کل قابل پرداخت</Typography><Typography color="success.main">{formatCurrency(wagePreview?.totalAmount ?? 0)}</Typography></Stack>
-      </DialogContent>
-      <DialogActions sx={{ direction: 'rtl', px: 3, py: 1.5 }}><Button onClick={() => setWagePreview(null)}>انصراف</Button><Button variant="contained" color="success" onClick={() => { issueSelectedWages(); setWagePreview(null); }}>تأیید و صدور فاکتور</Button></DialogActions>
-    </Dialog>
-  </Shell>;
-}
-
 export function LegacyReceivablesPage() { const [status, setStatus] = useState('all'); const rows = invoices.map((x) => ({ ...x, balance: x.amount - x.paidAmount, receivableStatus: x.paidAmount >= x.amount ? 'paid' : x.dueDate < new Date().toISOString() ? 'overdue' : x.paidAmount > 0 ? 'partial' : 'future' })).filter((x) => status === 'all' || x.receivableStatus === status); const total = rows.reduce((s, x) => s + x.balance, 0); return <Shell title="مطالبات" subtitle="پایش مانده حساب مشتریان و سررسید دریافت‌ها"><Stats items={[{ label: 'کل مطالبات', value: formatCurrency(total) }, { label: 'مطالبات معوق', value: formatCurrency(rows.filter((x) => x.receivableStatus === 'overdue').reduce((s, x) => s + x.balance, 0)), color: 'error.main' }, { label: 'سررسید این هفته', value: `${rows.filter((x) => x.receivableStatus === 'future').length} فاکتور`, color: 'warning.main' }]} /><Select value={status} onChange={(e) => setStatus(e.target.value)} sx={{ mb: 2, minWidth: 220 }}><MenuItem value="all">همه وضعیت‌ها</MenuItem><MenuItem value="overdue">معوق</MenuItem><MenuItem value="future">سررسید نشده</MenuItem><MenuItem value="partial">بخشی پرداخت شده</MenuItem></Select><Card><Table><TableHead><TableRow>{['مشتری','فاکتور','پروژه','سررسید','مبلغ','پرداخت‌شده','مانده','وضعیت'].map((h) => <TableCell key={h}>{h}</TableCell>)}</TableRow></TableHead><TableBody>{rows.map((x) => <TableRow key={x.id} hover><TableCell>{customerName(x.customerId)}</TableCell><TableCell>{x.number}</TableCell><TableCell>{projectName(x.projectId)}</TableCell><TableCell>{formatDate(x.dueDate)}</TableCell><TableCell>{formatCurrency(x.amount)}</TableCell><TableCell>{formatCurrency(x.paidAmount)}</TableCell><TableCell>{formatCurrency(x.balance)}</TableCell><TableCell>{chip(x.receivableStatus)}</TableCell></TableRow>)}</TableBody></Table></Card></Shell>; }
-
-export function BankAccountsPage() { return <Shell title="حساب‌های بانکی" subtitle="مانده حساب‌ها و گردش دریافت‌های سازمان"><Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: 'repeat(3,1fr)' }, mb: 2 }}>{bankAccounts.map((x) => <Card key={x.id}><CardContent><Stack direction="row" justifyContent="space-between"><Typography fontWeight={800}>{x.bankName}</Typography><Chip size="small" color="success" label="فعال" /></Stack><Typography variant="body2" color="text.secondary">{x.label} • {x.maskedNumber}</Typography><Typography variant="h6" fontWeight={800} sx={{ mt: 2 }}>{formatCurrency(x.balance)}</Typography><Typography variant="caption" color="text.secondary">{payments.filter((p) => p.bankAccountId === x.id).length} تراکنش مرتبط</Typography></CardContent></Card>)}</Box><Card><CardContent><Typography fontWeight={800} mb={1}>آخرین دریافت‌ها</Typography>{payments.map((p) => <Stack key={p.id} direction="row" justifyContent="space-between" sx={{ py: 1, borderBottom: '1px solid', borderColor: 'divider' }}><Typography>{p.receiptNumber} • {customerName(p.customerId)}</Typography><Typography color="success.main">{formatCurrency(p.amount)}</Typography></Stack>)}</CardContent></Card></Shell>; }
 
 export function LegacySuppliersPage() { return <Shell title="تأمین‌کنندگان" subtitle="طرف حساب‌های تامین کالا و خدمات"><Card><Table><TableHead><TableRow>{['تأمین‌کننده','شخص تماس','تلفن','ایمیل','مانده حساب','نوع'].map((h) => <TableCell key={h}>{h}</TableCell>)}</TableRow></TableHead><TableBody>{suppliers.map((x) => <TableRow hover key={x.id}><TableCell sx={{ fontWeight: 800 }}>{x.name}</TableCell><TableCell>{x.contactName}</TableCell><TableCell>{x.phone}</TableCell><TableCell>{x.email}</TableCell><TableCell>{formatCurrency(x.balance)}</TableCell><TableCell>{x.type === 'both' ? 'مشتری و تأمین‌کننده' : 'تأمین‌کننده'}</TableCell></TableRow>)}</TableBody></Table></Card></Shell>; }
 
 export function FinanceReportsPage() { const [view, setView] = useState('sales'); const revenue = invoices.reduce((s, x) => s + x.amount, 0), cost = expenses.reduce((s, x) => s + x.amount, 0); return <Shell title="گزارش‌های مالی" subtitle="گزارش فروش، دریافت، هزینه و سودآوری پروژه‌ها"><Select value={view} onChange={(e) => setView(e.target.value)} sx={{ mb: 2, minWidth: 240 }}><MenuItem value="sales">گزارش فروش</MenuItem><MenuItem value="profit">درآمد و هزینه</MenuItem><MenuItem value="receivables">مطالبات</MenuItem><MenuItem value="payments">دریافت‌ها</MenuItem><MenuItem value="projects">سودآوری پروژه‌ها</MenuItem></Select><Stats items={view === 'profit' ? [{ label: 'درآمد', value: formatCurrency(revenue) }, { label: 'هزینه', value: formatCurrency(cost) }, { label: 'نتیجه خالص', value: formatCurrency(revenue - cost), color: 'success.main' }] : [{ label: 'تعداد رکورد', value: `${view === 'payments' ? payments.length : invoices.length}` }, { label: 'مبلغ کل', value: formatCurrency(view === 'payments' ? payments.reduce((s, x) => s + x.amount, 0) : revenue) }, { label: 'آخرین بروزرسانی', value: 'امروز' }]} /><Card><CardContent><Typography fontWeight={800} mb={2}>{view === 'projects' ? 'حاشیه سود پروژه‌ها' : 'روند دوره‌ای'}</Typography>{projects.map((p) => { const rev = invoices.filter((i) => i.projectId === p.id).reduce((s, i) => s + i.amount, 0), exp = expenses.filter((e) => e.projectId === p.id).reduce((s, e) => s + e.amount, 0); return <Box key={p.id} sx={{ mb: 1.5 }}><Stack direction="row" justifyContent="space-between"><Typography variant="body2">{p.name}</Typography><Typography variant="body2" fontWeight={700}>{formatCurrency(rev - exp)}</Typography></Stack><LinearProgress variant="determinate" value={rev ? Math.min(100, Math.max(0, (rev - exp) / rev * 100)) : 0} color={rev - exp >= 0 ? 'success' : 'error'} /></Box>; })}</CardContent></Card></Shell>; }
 
-export function LegacyHesabfaPage() { const logs = [{ time: '۱۴:۳۲', entity: 'فاکتور ۱۰۴۲', op: 'ارسال به حسابفا', status: 'synced' }, { time: '۱۴:۲۸', entity: 'پارس وود', op: 'به‌روزرسانی مشتری', status: 'synced' }, { time: '۱۴:۱۲', entity: 'لپ‌تاپ Dell', op: 'دریافت از حسابفا', status: 'synced' }]; return <Shell title="یکپارچه‌سازی حسابفا" subtitle="این صفحه صرفاً نمایشی است و هنوز به حسابفا متصل نیست." action={<Stack direction="row" spacing={1}><Button variant="outlined" startIcon={<SyncOutlined />}>تست اتصال</Button><Button variant="contained">همگام‌سازی دستی</Button></Stack>}><Card sx={{ mb: 2 }}><CardContent><Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" gap={2}><Box><Typography variant="h6" fontWeight={800}>وضعیت اتصال: آماده اتصال</Typography><Typography color="text.secondary">آخرین همگام‌سازی: هنوز انجام نشده • سرویس آماده</Typography></Box><Chip color="warning" label="اتصال mock" /></Stack><Divider sx={{ my: 2 }} /><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>{['مشتریان','محصولات و خدمات','فاکتورها','پرداخت‌ها','هزینه‌ها'].map((x) => <Chip key={x} variant="outlined" label={x} />)}</Stack></CardContent></Card><Card><CardContent><Typography fontWeight={800} mb={1}>گزارش همگام‌سازی نمایشی</Typography><Table><TableHead><TableRow>{['زمان','موجودیت','عملیات','وضعیت'].map((h) => <TableCell key={h}>{h}</TableCell>)}</TableRow></TableHead><TableBody>{logs.map((x) => <TableRow key={x.time}><TableCell>{x.time}</TableCell><TableCell>{x.entity}</TableCell><TableCell>{x.op}</TableCell><TableCell>{chip(x.status)}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card></Shell>; }
-
-export function HesabfaPage() {
-  const logs = [{ id: 'sync-1', time: '۱۴:۳۲', entity: 'فاکتور ۱۰۴۲', operation: 'ارسال به حسابفا', status: 'synced' }, { id: 'sync-2', time: '۱۴:۲۸', entity: 'پارس وود', operation: 'به‌روزرسانی مشتری', status: 'synced' }, { id: 'sync-3', time: '۱۴:۱۲', entity: 'لپ‌تاپ Dell', operation: 'دریافت از حسابفا', status: 'synced' }];
-  return <Shell title="یکپارچه‌سازی حسابفا" subtitle="این صفحه صرفاً نمایشی است و هنوز به حسابفا متصل نیست." action={<Stack direction="row" spacing={1}><Button variant="outlined" startIcon={<SyncOutlined />}>تست اتصال</Button><Button variant="contained">همگام‌سازی دستی</Button></Stack>}><Card sx={{ mb: 2 }}><CardContent><Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" gap={2}><Box><Typography variant="h6" fontWeight={800}>وضعیت اتصال: آماده اتصال</Typography><Typography color="text.secondary">آخرین همگام‌سازی: هنوز انجام نشده • سرویس آماده</Typography></Box><Chip color="warning" label="اتصال mock" /></Stack><Divider sx={{ my: 2 }} /><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>{['مشتریان','محصولات و خدمات','فاکتورها','پرداخت‌ها','هزینه‌ها'].map((x) => <Chip key={x} variant="outlined" label={x} />)}</Stack></CardContent></Card><Card sx={{ p: 1 }}><DataTable rows={logs} getRowId={(row) => row.id} csvFilename="hesabfa-sync-log.csv" searchPlaceholder="جستجوی موجودیت یا عملیات..." columns={[{ key: 'time', label: 'زمان', value: (row) => row.time }, { key: 'entity', label: 'موجودیت', value: (row) => row.entity }, { key: 'operation', label: 'عملیات', value: (row) => row.operation }, { key: 'status', label: 'وضعیت', value: (row) => row.status, render: (row) => chip(row.status) }]} /></Card></Shell>;
+export function AccountingIntegrationPage() {
+  const { organization } = useApp();
+  return <Shell title="یکپارچه‌سازی حسابداری" subtitle={`همگام‌سازی حساب مالی کل سازمان ${organization.name}`}>
+    <Stack spacing={2}>
+      <Alert severity="info">سامانه حسابداری یک‌بار در سطح کل فضای کاری پیکربندی می‌شود. این بخش ارائه‌دهنده جداگانه‌ای انتخاب نمی‌کند و همیشه با همان سامانه‌ای همگام می‌شود که مدیر سازمان برای حساب اصلی کسب‌وکار متصل کرده است.</Alert>
+      <Card variant="outlined"><CardContent><Stack spacing={1.5}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between' }}><Box><Typography sx={{ fontWeight: 800 }}>اتصال حسابداری سازمان</Typography><Typography variant="body2" color="text.secondary">مشتریان، کالا و خدمات، قراردادها، فاکتورها، دریافت‌ها و اسناد پرداخت از طریق اتصال واحد سازمان همگام خواهند شد.</Typography></Box><Chip color="default" label="سامانه حسابداری پیکربندی نشده" /></Stack>
+        <Alert severity="warning">در حال حاضر اتصال فعالی برای این فضای کاری ثبت نشده است؛ بنابراین هیچ داده‌ای ارسال یا همگام نمی‌شود.</Alert>
+        <Box><Button variant="contained" startIcon={<SyncOutlined />} disabled>همگام‌سازی حسابداری</Button></Box>
+      </Stack></CardContent></Card>
+    </Stack>
+  </Shell>;
 }

@@ -9,7 +9,7 @@ import CsvToolbar from '../components/common/CsvToolbar.tsx';
 import CustomerVisibilityBadge from '../components/common/CustomerVisibilityBadge.tsx';
 import TicketFormDialog from '../components/common/TicketFormDialog.tsx';
 import { PriorityChip, TicketStatusChip } from '../components/common/StatusChip.tsx';
-import { customers, projects, users } from '../mock/data.ts';
+import { customers, projects, users } from '../services/repositories.ts';
 import { ticketRepository } from '../services/repositories.ts';
 import { notify } from '../services/notificationService.ts';
 import type { Ticket } from '../types/index.ts';
@@ -30,24 +30,27 @@ export default function TicketsPage() {
     { key: 'priority', label: 'اولویت', value: (row: Ticket) => priorityLabel[row.priority] },
     { key: 'assignee', label: 'مسئول', value: (row: Ticket) => users.find((item) => item.id === row.assigneeId)?.name ?? '' },
   ];
-  const save = (value: Partial<Ticket>) => {
+  const save = async (value: Partial<Ticket>) => {
     const now = new Date().toISOString();
-    if (params.get('edit')) ticketRepository.update(params.get('edit')!, { ...value, updatedAt: now });
+    if (params.get('edit')) await ticketRepository.update(params.get('edit')!, { ...value, updatedAt: now });
     else {
-      const created = ticketRepository.create({ ...value, createdAt: now, updatedAt: now, tags: value.tags ?? [], title: value.title ?? 'تیکت جدید', description: value.description ?? '', status: value.status ?? 'open', priority: value.priority ?? 'medium', category: value.category ?? 'support', assigneeId: value.assigneeId ?? 'u1', reporterId: value.reporterId ?? 'u1' });
-      ticketRepository.update(created.id, { activities: [{ id: `ta-${Date.now()}`, ticketId: created.id, type: 'created', description: 'تیکت ایجاد شد', actorId: 'u1', createdAt: now }] });
-      if (created.assigneeId !== 'u1') notify({ id: `n-${Date.now()}`, title: 'تیکت جدید به شما اختصاص داده شد', body: `تیکت «${created.title}» به شما اختصاص داده شد.`, createdAt: now, type: 'ticket', ticketId: created.id, recipientId: created.assigneeId, actorId: 'u1', entityType: 'ticket', entityId: created.id });
+      const created = await ticketRepository.create({ ...value, createdAt: now, updatedAt: now, tags: value.tags ?? [], title: value.title ?? 'تیکت جدید', description: value.description ?? '', status: value.status ?? 'open', priority: value.priority ?? 'medium', category: value.category ?? 'support', assigneeId: value.assigneeId ?? 'u1', reporterId: value.reporterId ?? 'u1' });
+      await ticketRepository.update(created.id, { activities: [{ id: `ta-${Date.now()}`, ticketId: created.id, type: 'created', description: 'تیکت ایجاد شد', actorId: 'u1', createdAt: now }] });
+      if (created.assigneeId !== 'u1') await notify({ id: `n-${Date.now()}`, title: 'تیکت جدید به شما اختصاص داده شد', body: `تیکت «${created.title}» به شما اختصاص داده شد.`, createdAt: now, type: 'ticket', ticketId: created.id, recipientId: created.assigneeId, actorId: 'u1', entityType: 'ticket', entityId: created.id });
     }
     setFormOpen(false); setParams((current) => { const next = new URLSearchParams(current); next.delete('create'); next.delete('edit'); return next; });
   };
-  const importRows = (items: Record<string, string>[]) => {
+  const importRows = async (items: Record<string, string>[]) => {
     const errors: string[] = []; let created = 0;
-    items.forEach((item, index) => {
+    const actor = users[0];
+    if (!actor) return { created: 0, errors: ['برای ورود تیکت‌ها باید حداقل یک کاربر تاییدشده از سرور وجود داشته باشد.'] };
+    for (const [index, item] of items.entries()) {
       const title = item['موضوع'] ?? item['عنوان'] ?? item.title;
-      if (!title?.trim()) { errors.push(`ردیف ${index + 2}: موضوع الزامی است.`); return; }
+      if (!title?.trim()) { errors.push(`ردیف ${index + 2}: موضوع الزامی است.`); continue; }
       const customer = customers.find((entry) => entry.company === item['مشتری']); const project = projects.find((entry) => entry.name === item['پروژه']);
-      ticketRepository.create({ title: title.trim(), description: item['شرح'] ?? item.description ?? '', status: 'open', priority: 'medium', category: 'support', assigneeId: users[0].id, reporterId: users[0].id, customerId: customer?.id, projectId: project?.id, tags: [], customerVisible: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }); created += 1;
-    });
+      try { await ticketRepository.create({ title: title.trim(), description: item['شرح'] ?? item.description ?? '', status: 'open', priority: 'medium', category: 'support', assigneeId: actor.id, reporterId: actor.id, customerId: customer?.id, projectId: project?.id, tags: [], customerVisible: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }); created += 1; }
+      catch (error) { errors.push(`ردیف ${index + 2}: ${error instanceof Error ? error.message : 'ذخیره در سرور انجام نشد'}`); }
+    }
     return { created, errors };
   };
   const stats = useMemo(() => ({ all: rows.length, open: rows.filter((row) => row.status === 'open').length, progress: rows.filter((row) => row.status === 'in_progress').length, urgent: rows.filter((row) => row.priority === 'urgent').length }), [rows]);

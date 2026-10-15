@@ -28,6 +28,76 @@ export const documentSectionLabels: Record<DocumentSection, string> = {
   projects: 'اسناد پروژه‌ها', customers: 'اسناد مشتریان', finance: 'اسناد مالی', hr: 'اسناد منابع انسانی', general: 'اسناد عمومی',
 };
 
+const documentTypes = new Set<BusinessDocumentType>(Object.keys(documentTypeLabels) as BusinessDocumentType[]);
+const documentStatuses = new Set<BusinessDocumentStatus>(Object.keys(documentStatusLabels) as BusinessDocumentStatus[]);
+
+const legacyDocumentTypes: Record<string, BusinessDocumentType> = {
+  meeting_minutes: 'other',
+  policy: 'other',
+};
+
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (typeof item === 'string') return item ? [item] : [];
+    if (item && typeof item === 'object' && typeof (item as { name?: unknown }).name === 'string') {
+      return [(item as { name: string }).name];
+    }
+    return [];
+  });
+}
+
+function normalizeDocumentType(value: unknown): BusinessDocumentType {
+  if (typeof value !== 'string') return 'other';
+  if (documentTypes.has(value as BusinessDocumentType)) return value as BusinessDocumentType;
+  return legacyDocumentTypes[value] ?? 'other';
+}
+
+function normalizeDocumentStatus(value: unknown, documentType: BusinessDocumentType): BusinessDocumentStatus {
+  const status = typeof value === 'string' && documentStatuses.has(value as BusinessDocumentStatus)
+    ? value as BusinessDocumentStatus
+    : 'draft';
+  if (documentStatusOptions[documentType].includes(status)) return status;
+  if (status === 'approved') {
+    if (documentType === 'acceptance') return 'accepted';
+    if (documentType === 'other' || documentType === 'project_contract' || documentType === 'employment_contract') return 'active';
+  }
+  return 'draft';
+}
+
+/**
+ * Keeps old persisted document records readable while MongoDB data is migrated to
+ * the canonical BusinessDocument shape. This is compatibility handling only;
+ * new writes still use the canonical fields.
+ */
+export function normalizeBusinessDocument(value: Record<string, unknown>, previous?: BusinessDocument): BusinessDocument {
+  const merged = { ...(previous ?? {}), ...value } as Record<string, unknown>;
+  const id = String(merged.id ?? previous?.id ?? '');
+  const documentType = normalizeDocumentType(merged.documentType ?? merged.type);
+  const createdAt = typeof merged.createdAt === 'string' ? merged.createdAt : '';
+  return {
+    ...merged,
+    id,
+    documentType,
+    title: typeof merged.title === 'string' ? merged.title : '',
+    documentNumber: typeof merged.documentNumber === 'string' && merged.documentNumber.trim()
+      ? merged.documentNumber
+      : `LEGACY-${id || 'DOCUMENT'}`,
+    summary: typeof merged.summary === 'string'
+      ? merged.summary
+      : typeof merged.description === 'string' ? merged.description : '',
+    status: normalizeDocumentStatus(merged.status, documentType),
+    attachments: normalizeStringArray(merged.attachments),
+    fileRecordIds: normalizeStringArray(merged.fileRecordIds),
+    createdBy: typeof merged.createdBy === 'string'
+      ? merged.createdBy
+      : typeof merged.ownerId === 'string' ? merged.ownerId : '',
+    createdAt,
+    updatedAt: typeof merged.updatedAt === 'string' ? merged.updatedAt : createdAt,
+    customerVisible: merged.customerVisible === true,
+  } as BusinessDocument;
+}
+
 export function documentMatchesSection(document: BusinessDocument, section: DocumentSection | 'all') {
   if (section === 'all') return true;
   if (section === 'projects') return Boolean(document.projectId);

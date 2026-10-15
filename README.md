@@ -1,80 +1,132 @@
-# تری‌لیز (Trileez) — MVP Prototype
+# Trivix panel
 
-پلتفرم سازمانی فارسی برای مدیریت کار/CRM و مانیتورینگ کارکنان و دستگاه‌ها در یک محیط واحد.
+Persian RTL organization panel built as a MERN application:
 
-این مخزن فعلاً روی **فاز ۱: فرانت‌اند وب** تمرکز دارد. بک‌اند MERN و کلاینت ویندوز هنوز پیاده‌سازی نشده‌اند.
+- React + TypeScript + Vite frontend
+- Express + TypeScript API with JWT authentication and permission checks
+- MongoDB persistence
+- SeaweedFS private S3-compatible object storage for uploaded files
+- Nginx production frontend and API reverse proxy
 
-## وضعیت فعلی
+## Run the full stack with Docker Compose
 
-پیاده‌سازی‌شده:
-
-- اپ React + TypeScript + Vite با رابط راست‌به‌چپ (RTL)
-- پوسته سازمانی: سایدبار، هدر، سوییچ فضای کاری، اعلان‌ها
-- صفحات: داشبورد، کارها، پروژه‌ها، جزئیات پروژه (بورد کانبان)، مشتریان، تیکت‌ها، تقویم، گزارش‌ها، مانیتورینگ، کاربران، دستگاه‌ها، تنظیمات
-- دادهٔ نمایشی فارسی در `apps/web/src/mock/data.ts`
-
-عمداً به تعویق افتاده:
-
-- بک‌اند Node.js / Express / MongoDB
-- احراز هویت JWT واقعی
-- کلاینت بومی ویندوز
-- اپ اندروید/iOS
-- ریموت دسکتاپ واقعی، WebRTC، TURN
-- ERP کامل، افزونه، وب‌هوک، ABAC پیشرفته
-
-## پیش‌نیازها
-
-- Node.js 20 یا جدیدتر
-- npm
-
-MongoDB برای فاز ۱ لازم نیست.
-
-## نصب و اجرای فرانت‌اند وب
+Docker Compose starts the web app, API, MongoDB, and SeaweedFS with persistent named volumes and container health checks.
 
 ```bash
-cd apps/web
+cp .env.docker.example .env
+# Replace every `replace-with-...` value and example domain before starting the stack.
+docker compose up --build -d
+docker compose ps
+```
+
+Production startup fails closed when required settings are missing, use placeholder secrets, enable the mock database, use memory storage, or enable automatic demo seeding. Generate independent random values for `JWT_SECRET`, `PROJECT_ACCESS_ENCRYPTION_KEY`, `MONGO_ROOT_PASSWORD`, and `S3_SECRET_KEY`; do not reuse one secret for another purpose. URL-encode MongoDB credentials when placing them in `MONGO_URI`.
+
+Local endpoints:
+
+- Panel: `http://localhost`
+- Liveness: `http://localhost/api/health/live`
+- Readiness: `http://localhost/api/health/ready`
+- Prometheus-format metrics: `http://localhost/api/metrics`
+
+Only Nginx is published to the host. Express, MongoDB, and SeaweedFS remain private on the Compose network; browser API requests use the same-origin `/api` route.
+
+Production does not create demo users. After the stack is healthy, create the first administrator once with transient bootstrap values:
+
+```bash
+export BOOTSTRAP_ORGANIZATION_ID=org1
+export BOOTSTRAP_ADMIN_EMAIL=admin@your-company.example
+export BOOTSTRAP_ADMIN_NAME='System administrator'
+read -rsp 'Initial admin password: ' BOOTSTRAP_ADMIN_PASSWORD && export BOOTSTRAP_ADMIN_PASSWORD
+docker compose run --rm \
+  -e BOOTSTRAP_ORGANIZATION_ID \
+  -e BOOTSTRAP_ADMIN_EMAIL \
+  -e BOOTSTRAP_ADMIN_NAME \
+  -e BOOTSTRAP_ADMIN_PASSWORD \
+  server npm run bootstrap-admin
+unset BOOTSTRAP_ADMIN_PASSWORD
+```
+
+The command enforces the backend password policy, is safe to retry for the same active administrator, records an audit entry, and forces a password change on first login. It never prints the password. Keep `AUTO_SEED=false` in production.
+
+## Seed an internally testable MVP
+
+For local/internal testing, set `SEED_ADMIN_EMAIL` and a password that satisfies the backend password policy in `.env`, then run the one-shot seed service:
+
+```bash
+docker compose --profile tools run --rm --build seed
+```
+
+The seed is relationship-aware and idempotent. It upserts a connected company dataset into MongoDB, including users/employees, customers, projects, project roles/members/phases, tasks, time entries, meetings, events, CRM, finance, contracts, payroll, HR, tickets, notifications, and real file objects plus metadata in SeaweedFS. Running the command again updates the same natural-key/deterministic records instead of duplicating them. Existing matching user passwords are intentionally preserved; all newly inserted seed users use the password supplied through `SEED_ADMIN_PASSWORD`, which is only hashed in MongoDB.
+
+The seed finishes with a relationship-integrity check and reconciles the organization storage quota with active file metadata. To also execute the complete seed twice and verify that the second run does not add or replace any organization-owned record identities, run:
+
+```bash
+docker compose --profile tools run --rm --build seed node dist/seed.js --verify-idempotency
+```
+
+The frontend does not import or upload this data. It reads the seeded records through the normal authenticated API, so an unavailable API or database still produces the normal loading/error/empty behavior instead of a mock fallback. `AUTO_SEED` remains disabled; explicit seeding is preferred so production startup never creates demo data unexpectedly.
+
+Useful commands:
+
+```bash
+docker compose logs -f server web
+docker compose restart server
+docker compose down
+```
+
+`docker compose down` preserves MongoDB and SeaweedFS data. Adding `--volumes` deletes both persistent data volumes and should only be used when a full local reset is intended.
+
+The containers are intentionally small: multi-stage Alpine Node images, an Alpine Nginx runtime, an explicit single-node `weed mini -dir=/data -admin.port=22646` SeaweedFS service, capped log files, health checks, and conservative memory limits. SeaweedFS readiness is checked through the master status endpoint rather than the credential-protected S3 root. MongoDB and SeaweedFS are the only stateful services.
+
+## Production operations
+
+The API writes one structured JSON object per log line to stdout/stderr. Request logs include bounded HTTP metadata, latency, status, request ID, and correlation ID; password, token, credential, and secret fields are recursively redacted. Security-sensitive authentication and authorization decisions are emitted as `security_event` records and durable business audit records remain in MongoDB.
+
+Clients may send valid `X-Request-ID` and `X-Correlation-ID` values. The API generates missing or malformed IDs and returns both response headers, so logs and error responses can be traced across requests. Nginx forwards these headers.
+
+`/api/health/live` only confirms that the process is alive. `/api/health/ready` checks runtime state, MongoDB with an active ping, and object storage; it returns HTTP 503 before dependencies are ready and during shutdown. `/api/health` remains a backward-compatible readiness alias. `/api/metrics` exposes bounded Prometheus text metrics for HTTP traffic, latency, active requests, process memory/uptime, security events, jobs, and unexpected errors. Restrict the metrics path at the deployment ingress when it should not be internet-visible, or set `METRICS_ENABLED=false`.
+
+MongoDB and object-storage initialization use bounded exponential retry with jitter. `SIGTERM`/`SIGINT` first remove the process from readiness, stop new HTTP work, drain jobs and connections, disconnect MongoDB, and then exit. Relevant controls are `STARTUP_MAX_ATTEMPTS`, `STARTUP_RETRY_BASE_MS`, `DEPENDENCY_TIMEOUT_MS`, `SHUTDOWN_TIMEOUT_MS`, `MONGO_MAX_POOL_SIZE`, `TRUST_PROXY_HOPS`, and `LOG_LEVEL`.
+
+## Local development without Docker
+
+Backend:
+
+```bash
+cd apps/server
+cp .env.example .env
 npm install
 npm run dev
 ```
 
-سپس مرورگر را روی آدرس نمایش‌داده‌شده توسط Vite باز کنید (معمولاً `http://localhost:5173`).
-
-ساخت production:
+Frontend:
 
 ```bash
 cd apps/web
+cp .env.example .env
+npm install
+npm run dev
+```
+
+The local API defaults to an in-memory database and in-memory object storage. Those modes are rejected when `NODE_ENV=production`. To exercise real persistence, use Compose or configure `MONGO_URI`, `USE_MOCK_DB=false`, `STORAGE_DRIVER=s3`, and the S3 variables in `apps/server/.env`.
+
+## File storage
+
+Files are never stored inside ordinary employee, project, meeting, or document records. The API stores file metadata in MongoDB and the binary object in a private SeaweedFS S3 bucket. Downloads are streamed through authenticated API routes so the bucket does not need public access.
+
+The file manager, business-document attachments, and optional meeting documents use this backend upload path. Uploads are streamed through restricted temporary files rather than buffered in server memory, MIME type is detected from content, and checksums and object size are verified. The API enforces a default 10 MiB per-file limit and 1 GiB organization quota, rejects active/executable content, validates attachment relationships, records sensitive access and lifecycle audit events, and enforces private/workspace/project/customer visibility rules without disclosing inaccessible file IDs.
+
+Deletion is recoverable and idempotent at the storage-provider layer. The recurring cleanup job retries failed deletions, removes untracked SeaweedFS objects after a grace period, detects missing objects, and reconciles organization quota usage. Configure `MAX_UPLOAD_BYTES`, `ORGANIZATION_STORAGE_QUOTA_BYTES`, and `UPLOAD_ORPHAN_GRACE_MINUTES` to change the defaults.
+
+## Validation
+
+```bash
+cd apps/server
+npm run typecheck
+npm test
+
+cd ../web
 npm run build
-npm run preview
 ```
 
-## بک‌اند (هنوز آماده نیست)
-
-پس از فاز ۲:
-
-- پیکربندی MongoDB با متغیرهای محیطی
-- اجرای API با Express
-- seed دادهٔ دمو
-
-فعلاً همهٔ صفحات از mock JSON محلی تغذیه می‌شوند.
-
-## دادهٔ دمو
-
-کاربر نمایشی فعلی:
-
-- نام: سارا محمدی
-- ایمیل: `sara.mohammadi@trileez.ir`
-- نقش: مدیر عملیات
-
-ورود واقعی هنوز وجود ندارد؛ اپ بلافاصله داشبورد را نشان می‌دهد.
-
-## کلاینت ویندوز (فاز ۳)
-
-هنوز ایجاد نشده است. پس از اتصال وب به API اضافه خواهد شد.
-
-## ساختار
-
-```text
-trivix/
-  apps/web/     فرانت‌اند React
-  docs/         سند محصول بلندمدت
-```
+See [apps/server/README.md](apps/server/README.md) for the API route overview.

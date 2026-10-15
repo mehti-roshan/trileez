@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import { businessDocuments } from '../src/mock/data.ts';
 import type { BusinessDocument, BusinessDocumentType } from '../src/types/index.ts';
-import { documentMatchesSection, documentStatusOptions, documentTypeLabels, validateBusinessDocument } from '../src/utils/document.ts';
+import { documentMatchesSection, documentStatusOptions, documentTypeLabels, normalizeBusinessDocument, validateBusinessDocument } from '../src/utils/document.ts';
 
 const requiredTypes: BusinessDocumentType[] = ['proposal', 'project_contract', 'change_request', 'employment_contract', 'acceptance', 'other'];
 const asInput = (document: BusinessDocument): Omit<BusinessDocument, 'id' | 'createdAt' | 'updatedAt'> => ({
@@ -59,4 +59,26 @@ test('sections derive from real customer, project and employee relationships', (
 test('accepted sign-off requires the exact acceptance date', () => {
   const acceptance = businessDocuments.find((document) => document.documentType === 'acceptance')!;
   assert.deepEqual(validateBusinessDocument({ ...asInput(acceptance), acceptedDate: undefined }), ['تاریخ پذیرش']);
+});
+
+test('legacy persisted documents are normalized before the documents page renders them', () => {
+  const normalized = normalizeBusinessDocument({
+    id: 'seed-document-employee-handbook',
+    title: 'راهنمای داخلی کارکنان',
+    type: 'policy',
+    section: 'hr',
+    status: 'approved',
+    ownerId: 'u1',
+    fileRecordIds: ['file-1'],
+    createdAt: '2026-09-01T00:00:00.000Z',
+  });
+
+  assert.equal(normalized.documentType, 'other');
+  assert.equal(normalized.status, 'active');
+  assert.equal(normalized.createdBy, 'u1');
+  assert.equal(normalized.summary, '');
+  assert.match(normalized.documentNumber, /^LEGACY-/);
+  assert.deepEqual(normalized.attachments, []);
+  assert.deepEqual(normalized.fileRecordIds, ['file-1']);
+  assert.doesNotThrow(() => normalized.attachments.length);
 });

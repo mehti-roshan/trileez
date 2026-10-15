@@ -5,7 +5,7 @@ import JalaliDatePicker from './JalaliDatePicker.tsx';
 export type EntityField = {
   name: string;
   label: string;
-  type?: 'text' | 'number' | 'date' | 'select' | 'textarea' | 'checkbox';
+  type?: 'text' | 'number' | 'time' | 'date' | 'select' | 'textarea' | 'checkbox';
   direction?: 'rtl' | 'ltr';
   required?: boolean;
   options?: { value: string; label: string }[];
@@ -39,6 +39,6 @@ export default function EntityFormDialog({ open, onClose, title, fields, initial
     if (field.type === 'checkbox') return <FormControlLabel key={field.name} control={<Checkbox checked={values[field.name] === 'true'} onChange={(event) => setValues((current) => ({ ...current, [field.name]: String(event.target.checked) }))} />} label={field.label} sx={{ m: 0, direction: 'rtl', justifyContent: 'flex-start' }} />;
     if (field.type === 'date') return <JalaliDatePicker key={field.name} required={field.required} label={field.label} value={values[field.name] ?? ''} onChange={(value) => setValues((current) => ({ ...current, [field.name]: value }))} />;
     const inferredDirection = field.direction ?? (/email|url|website|phone|mobile|fax|code|slug|ip|identifier|number/i.test(field.name) ? 'ltr' : 'rtl');
-    return <TextField key={field.name} required={field.required} fullWidth type={field.type === 'number' ? 'number' : 'text'} label={field.label} placeholder={field.placeholder} multiline={field.type === 'textarea'} minRows={field.type === 'textarea' ? 3 : undefined} slotProps={{ htmlInput: { dir: inferredDirection } }} sx={{ '& .MuiInputBase-input': { direction: inferredDirection, textAlign: inferredDirection === 'ltr' ? 'left' : 'right' }, '& textarea': { direction: inferredDirection, textAlign: inferredDirection === 'ltr' ? 'left' : 'right' } }} value={values[field.name] ?? ''} onChange={(event) => setValues((current) => ({ ...current, [field.name]: event.target.value }))} />;
+    return <TextField key={field.name} required={field.required} fullWidth type={field.type === 'number' ? 'number' : field.type === 'time' ? 'time' : 'text'} label={field.label} placeholder={field.placeholder} multiline={field.type === 'textarea'} minRows={field.type === 'textarea' ? 3 : undefined} slotProps={{ htmlInput: { dir: inferredDirection } }} sx={{ '& .MuiInputBase-input': { direction: inferredDirection, textAlign: inferredDirection === 'ltr' ? 'left' : 'right' }, '& textarea': { direction: inferredDirection, textAlign: inferredDirection === 'ltr' ? 'left' : 'right' } }} value={values[field.name] ?? ''} onChange={(event) => setValues((current) => ({ ...current, [field.name]: event.target.value }))} />;
   })}{children}</Stack></DialogContent><DialogActions sx={{ flexWrap: 'wrap', gap: 1, px: 3, pb: 2, direction: 'rtl' }}>{<Button onClick={onClose} disabled={submitting}>انصراف</Button>}<Button variant="contained" onClick={submit} disabled={!valid || submitting}>{submitting ? 'در حال ذخیره…' : submitLabel}</Button></DialogActions></Dialog><Snackbar open={saved} autoHideDuration={3000} onClose={() => setSaved(false)} anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}><Alert severity="success" onClose={() => setSaved(false)}>مورد با موفقیت ذخیره شد.</Alert></Snackbar></>;
 }

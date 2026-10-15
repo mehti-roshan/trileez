@@ -1,7 +1,7 @@
 import { AttachFile, DeleteOutlined, UploadFile } from '@mui/icons-material';
 import { Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, FormControlLabel, InputLabel, MenuItem, Select, Stack, Switch, TextField, Typography } from '@mui/material';
 import { useState } from 'react';
-import { customers, employees, projects, users } from '../../mock/data.ts';
+import { customers, employees, projects, users } from '../../services/repositories.ts';
 import { listFiles } from '../../services/fileService.ts';
 import type { BusinessDocument, BusinessDocumentStatus, BusinessDocumentType } from '../../types/index.ts';
 import { customerDisplayName } from '../../utils/customer.ts';
@@ -9,7 +9,7 @@ import { documentStatusLabels, documentStatusOptions, documentTypeLabels, valida
 import JalaliDatePicker from './JalaliDatePicker.tsx';
 
 type DocumentInput = Omit<BusinessDocument, 'id' | 'createdAt' | 'updatedAt'>;
-type Props = { document?: BusinessDocument; initialProjectId?: string; initialCustomerId?: string; initialEmployeeId?: string; onClose: () => void; onSave: (input: DocumentInput, files: File[]) => void };
+type Props = { document?: BusinessDocument; initialProjectId?: string; initialCustomerId?: string; initialEmployeeId?: string; onClose: () => void; onSave: (input: DocumentInput, files: File[]) => void | Promise<void> };
 
 function initialValues(document?: BusinessDocument, initialProjectId?: string, initialCustomerId?: string, initialEmployeeId?: string) {
   const contextualCustomerId = initialCustomerId ?? projects.find((project) => project.id === initialProjectId)?.customerId ?? '';
@@ -30,6 +30,7 @@ export default function DocumentFormDialog({ document, initialProjectId, initial
   const [existingFileIds, setExistingFileIds] = useState(document?.fileRecordIds ?? []);
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
   const type = values.documentType as BusinessDocumentType;
   const availableFiles = listFiles().filter((file) => !file.deletedAt);
   const availableProjects = projects.filter((project) => !values.customerId || project.customerId === values.customerId);
@@ -53,7 +54,7 @@ export default function DocumentFormDialog({ document, initialProjectId, initial
       ...selectedNames,
     ])));
   };
-  const submit = () => {
+  const submit = async () => {
     const input: DocumentInput = {
       documentType: type, title: values.title.trim(), documentNumber: values.documentNumber.trim(), summary: values.summary.trim(), status: values.status as BusinessDocumentStatus,
       attachments, fileRecordIds: existingFileIds, createdBy: document?.createdBy ?? 'u1', customerVisible: values.customerVisible,
@@ -68,7 +69,14 @@ export default function DocumentFormDialog({ document, initialProjectId, initial
     if (missing.length) { setError(`فیلدهای لازم را تکمیل کنید: ${missing.join('، ')}`); return; }
     if (input.projectId && projects.find((project) => project.id === input.projectId)?.customerId !== input.customerId) { setError('پروژه و مشتری انتخاب‌شده با یکدیگر مرتبط نیستند.'); return; }
     if (input.startDate && input.endDate && input.endDate < input.startDate) { setError('تاریخ پایان نمی‌تواند قبل از تاریخ شروع باشد.'); return; }
-    onSave(input, files);
+    setSaving(true);
+    try {
+      await onSave(input, files);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'بارگذاری یا ذخیره سند ناموفق بود.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return <Dialog open onClose={onClose} fullWidth maxWidth="md" slotProps={{ paper: { sx: { direction: 'rtl', maxHeight: 'calc(100vh - 24px)' } } }}>
@@ -98,6 +106,6 @@ export default function DocumentFormDialog({ document, initialProjectId, initial
       <FormControlLabel control={<Switch checked={values.customerVisible} onChange={(event) => set('customerVisible', event.target.checked)} />} label="قابل مشاهده برای مشتری" />
       <Box sx={{ p: 1.5, border: '1px dashed', borderColor: 'divider', borderRadius: 2 }}><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { sm: 'center' } }}><Button component="label" variant="outlined" startIcon={<UploadFile />}>بارگذاری فایل<input hidden multiple type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg" onChange={(event) => addFiles(event.target.files)} /></Button>{availableFiles.length > 0 && <FormControl size="small" sx={{ minWidth: 260, flex: 1 }}><InputLabel>انتخاب از فایل منیجر</InputLabel><Select multiple label="انتخاب از فایل منیجر" value={existingFileIds} onChange={(event) => selectExistingFiles(typeof event.target.value === 'string' ? event.target.value.split(',') : event.target.value)} renderValue={(selected) => `${selected.length.toLocaleString('fa-IR')} فایل انتخاب‌شده`}>{availableFiles.map((file) => <MenuItem key={file.id} value={file.id}>{file.name}</MenuItem>)}</Select></FormControl>}<Typography variant="caption" color="text.secondary">حداقل یک فایل بارگذاری یا از فایل منیجر انتخاب کنید.</Typography></Stack><Stack direction="row" spacing={0.75} useFlexGap sx={{ mt: 1, flexWrap: 'wrap' }}>{attachments.map((name) => <Chip key={name} icon={<AttachFile />} label={name} onDelete={() => { setAttachments((current) => current.filter((item) => item !== name)); setFiles((current) => current.filter((file) => file.name !== name)); setExistingFileIds((current) => current.filter((id) => availableFiles.find((file) => file.id === id)?.name !== name)); }} deleteIcon={<DeleteOutlined />} />)}</Stack></Box>
     </Stack></DialogContent>
-    <DialogActions sx={{ px: 3, py: 2 }}><Button onClick={onClose}>انصراف</Button><Button variant="contained" onClick={submit}>{document ? 'ذخیره تغییرات' : 'ثبت سند'}</Button></DialogActions>
+    <DialogActions sx={{ px: 3, py: 2 }}><Button onClick={onClose} disabled={saving}>انصراف</Button><Button variant="contained" onClick={submit} disabled={saving}>{saving ? 'در حال ذخیره…' : document ? 'ذخیره تغییرات' : 'ثبت سند'}</Button></DialogActions>
   </Dialog>;
 }

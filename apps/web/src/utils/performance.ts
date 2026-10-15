@@ -55,6 +55,8 @@ export function baselineForMonth(employeeId: string, periods: PerformancePeriod[
 }
 
 export function monthScore(employeeId: string, events: PerformancePointEvent[], periods: PerformancePeriod[] = [], period: string | Date = new Date(), fallback = DEFAULT_PERFORMANCE_SCORE) {
+  const stored = periods.find((item) => item.employeeId === employeeId && monthKey(item.startedAt) === monthKey(period));
+  if (stored) return clampScore(stored.score);
   const baseline = baselineForMonth(employeeId, periods, period, fallback);
   const adjustmentTotal = eventsForMonth(employeeId, events, period).reduce((sum, event) => sum + event.points, 0);
   return clampScore(baseline + adjustmentTotal);
@@ -62,14 +64,16 @@ export function monthScore(employeeId: string, events: PerformancePointEvent[], 
 
 export function scoreSummary(employeeId: string, events: PerformancePointEvent[], periods: PerformancePeriod[] = [], period: string | Date = new Date()) {
   const monthEvents = eventsForMonth(employeeId, events, period);
-  const baseline = baselineForMonth(employeeId, periods, period);
-  const delta = monthEvents.reduce((sum, event) => sum + event.points, 0);
-  const score = clampScore(baseline + delta);
-  const history = finalizedPeriods(employeeId, periods);
+  const selectedMonth = monthKey(period);
+  const stored = periods.find((item) => item.employeeId === employeeId && monthKey(item.startedAt) === selectedMonth);
+  const baseline = stored?.baselineScore ?? baselineForMonth(employeeId, periods, period);
+  const delta = stored?.adjustmentTotal ?? monthEvents.reduce((sum, event) => sum + event.points, 0);
+  const score = clampScore(stored?.score ?? baseline + delta);
+  const history = finalizedPeriods(employeeId, periods).filter((item) => monthKey(item.startedAt) !== selectedMonth);
   return {
     score,
     baseline,
-    grade: gradeForScore(score),
+    grade: stored?.grade ?? gradeForScore(score),
     delta,
     positive: monthEvents.filter((event) => event.points > 0).length,
     negative: monthEvents.filter((event) => event.points < 0).length,

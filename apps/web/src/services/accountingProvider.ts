@@ -3,7 +3,7 @@ import type { Contract, Customer, Invoice, Payment, Product } from '../types/ind
 export type SyncState = 'local' | 'pending' | 'synced' | 'needs_review' | 'error';
 
 /**
- * Boundary for a future accounting provider (for example Hesabfa).
+ * Provider-neutral boundary for the accounting platform configured for a tenant.
  * The prototype intentionally keeps all operations local and does not make
  * network requests. Consumers depend on application models, not provider DTOs.
  */
@@ -15,7 +15,7 @@ export interface AccountingProvider {
   syncContracts(contracts: Contract[]): Promise<void>;
 }
 
-export const localAccountingProvider: AccountingProvider = {
+export const unconfiguredAccountingProvider: AccountingProvider = {
   async syncCustomers() { /* future provider hook */ },
   async syncProducts() { /* future provider hook */ },
   async syncInvoices() { /* future provider hook */ },
@@ -24,7 +24,7 @@ export const localAccountingProvider: AccountingProvider = {
 };
 
 export const syncStateLabel: Record<SyncState, string> = {
-  local: 'محلی',
+  local: 'فقط داخلی',
   pending: 'در انتظار همگام‌سازی',
   synced: 'همگام شده',
   needs_review: 'نیازمند بررسی',

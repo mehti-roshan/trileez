@@ -17,14 +17,16 @@ import SettingsPage from './pages/SettingsPage.tsx';
 import { ContractsPage, InvoiceDetailPage, InvoicesPage, InstallmentsPage, LeadsPage, PaymentsPage, ProductsPage, SalesOverviewPage } from './pages/BusinessPages.tsx';
 import { ActivitiesPage, GoalsPage, TimesheetsPage } from './pages/SupplementalPages.tsx';
 import { AnnouncementsPage, ExportsPage, KnowledgePage, NotificationPage, RemindersPage } from './pages/UtilityPages.tsx';
-import { AttendancePage, EmployeeDetailPage, EmployeesPage, HRDashboardPage, LeavesPage, MissionsPage, RecruitmentPage } from './pages/HRPages.tsx';
-import { BankAccountsPage, BillableWorkPage, ExpensesPage, FinanceDashboardPage, FinanceReportsPage, HesabfaPage, ReceivablesPage, SuppliersPage } from './pages/FinancePages.tsx';
+import { AttendancePage, EmployeeDetailPage, EmployeesPage, HRDashboardPage, LeavesPage, MissionsPage, PayrollPage, RecruitmentPage } from './pages/HRPages.tsx';
+import { AccountingIntegrationPage, ExpensesPage, FinanceDashboardPage, FinanceReportsPage, ReceivablesPage, SuppliersPage } from './pages/FinancePages.tsx';
 import { ChatPage, ProjectEventsPage, TaskLabelsPage } from './pages/AdvancedPages.tsx';
 import { PerformanceDetailPage, PerformancePage } from './pages/PerformanceManagementPage.tsx';
 import FileManagerPage from './pages/FileManagerPage.tsx';
 import LeadDetailPage from './pages/LeadDetailPage.tsx';
 import DocumentsPage from './pages/DocumentsPage.tsx';
 import RecruitmentDetailPage from './pages/RecruitmentDetailPage.tsx';
+import { MeetingDetailPage, MeetingsPage } from './pages/MeetingsPage.tsx';
+import PayrollFinancePage from './pages/PayrollFinancePage.tsx';
 
 export default function App() {
   return (
@@ -38,6 +40,7 @@ export default function App() {
         <Route path="/hr/attendance" element={<AttendancePage />} />
         <Route path="/hr/leaves" element={<LeavesPage />} />
         <Route path="/hr/missions" element={<MissionsPage />} />
+        <Route path="/hr/payroll" element={<PayrollPage />} />
         <Route path="/hr/performance" element={<PerformancePage />} />
         <Route path="/hr/points" element={<Navigate to="/hr/performance" replace />} />
         <Route path="/hr/performance/:id" element={<PerformanceDetailPage />} />
@@ -48,6 +51,8 @@ export default function App() {
         <Route path="/projects/:id" element={<ProjectDetailPage />} />
         <Route path="/projects/:id/events" element={<ProjectEventsPage />} />
         <Route path="/project-events" element={<ProjectEventsPage />} />
+        <Route path="/meetings" element={<MeetingsPage />} />
+        <Route path="/meetings/:id" element={<MeetingDetailPage />} />
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/tasks/:id" element={<TaskDetailPage />} />
         <Route path="/tasks/labels" element={<TaskLabelsPage />} />
@@ -58,12 +63,13 @@ export default function App() {
         <Route path="/sales" element={<SalesOverviewPage />} />
         <Route path="/finance" element={<FinanceDashboardPage />} />
         <Route path="/finance/expenses" element={<ExpensesPage />} />
-        <Route path="/finance/wages" element={<BillableWorkPage />} />
         <Route path="/finance/receivables" element={<ReceivablesPage />} />
-        <Route path="/finance/bank-accounts" element={<BankAccountsPage />} />
+        <Route path="/finance/bank-accounts" element={<Navigate to="/finance" replace />} />
         <Route path="/finance/suppliers" element={<SuppliersPage />} />
         <Route path="/finance/reports" element={<FinanceReportsPage />} />
-        <Route path="/finance/hesabfa" element={<HesabfaPage />} />
+        <Route path="/finance/payroll" element={<PayrollFinancePage />} />
+        <Route path="/finance/accounting" element={<AccountingIntegrationPage />} />
+        <Route path="/finance/hesabfa" element={<Navigate to="/finance/accounting" replace />} />
         <Route path="/invoices" element={<InvoicesPage />} />
         <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
         <Route path="/payments" element={<PaymentsPage />} />

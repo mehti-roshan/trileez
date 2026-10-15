@@ -34,27 +34,31 @@ export default function CustomersPage() {
     setLocalOpen(false);
     setParams((current) => { const next = new URLSearchParams(current); next.delete('create'); return next; }, { replace: true });
   };
-  const importCustomers = (records: Record<string, string>[]) => {
+  const importCustomers = async (records: Record<string, string>[]) => {
     const errors: string[] = [];
     let created = 0;
-    records.forEach((row, index) => {
+    for (const [index, row] of records.entries()) {
       const entityType = parseEntityType(row['نوع مشتری'] || row['نوع']);
       const displayName = row['شرکت / نام شخص'] || row['نام شرکت'] || row['نام شخص'] || row['شرکت'] || row['نام'];
-      if (!displayName?.trim()) { errors.push(`ردیف ${index + 2}: نام شخص یا شرکت الزامی است.`); return; }
+      if (!displayName?.trim()) { errors.push(`ردیف ${index + 2}: نام شخص یا شرکت الزامی است.`); continue; }
       const name = displayName.trim();
-      customerRepository.create({
-        entityType, name, company: name,
-        nationalCode: row['کد ملی / کد اقتصادی'] || row['شناسه ملی / کد ملی'] || row['کد ملی'] || row['شناسه ملی'] || row['کد اقتصادی'] || undefined,
-        vatRegistrationNumber: row['شماره ثبت مالیات بر ارزش افزوده'] || undefined,
-        phone: row['شماره موبایل'] || row['موبایل'] || row['تلفن'] || '',
-        website: row['وبسایت'] || row['وب‌سایت'] || undefined,
-        groups: splitGroups(row['گروه‌ها']), currency: row['ارز'] || 'IRR',
-        address: row['آدرس'] || row['نشانی'] || undefined, province: row['استان'] || undefined, city: row['شهر'] || undefined,
-        postalCode: row['کد پستی'] || undefined, country: row['کشور'] || 'ایران',
-        email: '', status: 'active', value: 0, lastContact: new Date().toISOString(), assignedTo: 'u1',
-      });
-      created += 1;
-    });
+      try {
+        await customerRepository.create({
+          entityType, name, company: name,
+          nationalCode: row['کد ملی / کد اقتصادی'] || row['شناسه ملی / کد ملی'] || row['کد ملی'] || row['شناسه ملی'] || row['کد اقتصادی'] || undefined,
+          vatRegistrationNumber: row['شماره ثبت مالیات بر ارزش افزوده'] || undefined,
+          phone: row['شماره موبایل'] || row['موبایل'] || row['تلفن'] || '',
+          website: row['وبسایت'] || row['وب‌سایت'] || undefined,
+          groups: splitGroups(row['گروه‌ها']), currency: row['ارز'] || 'IRR',
+          address: row['آدرس'] || row['نشانی'] || undefined, province: row['استان'] || undefined, city: row['شهر'] || undefined,
+          postalCode: row['کد پستی'] || undefined, country: row['کشور'] || 'ایران',
+          email: '', status: 'active', value: 0, lastContact: new Date().toISOString(), assignedTo: 'u1',
+        });
+        created += 1;
+      } catch (error) {
+        errors.push(`ردیف ${index + 2}: ${error instanceof Error ? error.message : 'ذخیره در سرور انجام نشد.'}`);
+      }
+    }
     return { created, errors };
   };
 

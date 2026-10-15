@@ -23,6 +23,7 @@ import type {
   Goal,
   TimesheetEntry,
   ActivityLog,
+  CredentialAuditEvent,
   Employee,
   AttendanceRecord,
   LeaveRequest,
@@ -47,6 +48,7 @@ import type {
   BusinessDocument,
   Conversation,
   Message,
+  Meeting,
   ProjectEvent,
   ChatGroup,
   ProjectPhase,
@@ -58,7 +60,6 @@ import type {
   TicketReply,
   TicketActivity,
   RoleDefinition,
-  WageRecord,
 } from '../types';
 import { normalizeCandidateWorkflow } from '../utils/recruitment.ts';
 
@@ -89,8 +90,8 @@ export const users: User[] = [
 ];
 
 export const roleDefinitions: RoleDefinition[] = [
-  { id: 'admin', label: 'مدیر سامانه', permissions: ['project:view', 'project:create', 'project:update', 'task:view', 'task:create', 'task:update', 'finance:view', 'finance:pay', 'hr:view', 'hr:manage-users', 'reports:view', 'document:view'] },
-  { id: 'manager', label: 'مدیر / سرپرست', permissions: ['project:view', 'project:create', 'project:update', 'task:view', 'task:create', 'task:update', 'finance:view', 'hr:view', 'reports:view', 'document:view'] },
+  { id: 'admin', label: 'مدیر سامانه', permissions: ['project:view', 'project:create', 'project:update', 'task:view', 'task:create', 'task:update', 'finance:view', 'finance:pay', 'hr:view', 'hr:manage-users', 'hr:manage-performance', 'hr:reopen-performance', 'reports:view', 'document:view'] },
+  { id: 'manager', label: 'مدیر / سرپرست', permissions: ['project:view', 'project:create', 'project:update', 'task:view', 'task:create', 'task:update', 'finance:view', 'hr:view', 'hr:manage-performance', 'reports:view', 'document:view'] },
   { id: 'member', label: 'کارمند / همکار', permissions: ['project:view', 'task:view', 'task:create', 'task:update', 'document:view'] },
   { id: 'customer', label: 'کاربر مشتری', permissions: [] },
 ];
@@ -475,7 +476,6 @@ export const timesheets: TimesheetEntry[] = Array.from({ length: 40 }, (_, index
     createdAt: daysAgo(index % 18),
   };
 });
-export const wageRecords: WageRecord[] = [];
 tasks.forEach((task) => {
   task.loggedHours = timesheets.filter((entry) => entry.taskId === task.id).reduce((sum, entry) => sum + entry.hours, 0);
 });
@@ -505,18 +505,23 @@ export const activityLogs: ActivityLog[] = Array.from({ length: 56 }, (_, index)
   };
 });
 
+// Credential audit records never contain plaintext passwords or password hashes.
+// The generated secret is shown once to the authorized administrator and then
+// discarded from UI state.
+export const credentialAuditEvents: CredentialAuditEvent[] = [];
+
 export const employees: Employee[] = [
   ...users.map((user, index): Employee => ({
     id: user.id, personnelCode: `EMP-${1040 + index}`, fullName: user.name, phone: `۰۹۱۲۱۲۳۴${(10 + index).toString().padStart(2, '۰')}`, email: user.email,
     nationalId: `۰۰۱۲۳۴۵۶${(10 + index).toString().padStart(2, '۰')}`, jobTitle: user.title, department: ['عملیات', 'فنی', 'محصول', 'فنی', 'پشتیبانی', 'زیرساخت', 'فروش', 'فنی'][index],
-    managerId: index > 0 && index !== 1 ? 'u1' : undefined, employmentType: index === 2 ? 'part_time' : 'full_time', contractType: 'قرارداد دائم', employmentStatus: index === 4 ? 'leave' : 'active',
+    managerId: index > 0 && index !== 1 ? 'u1' : undefined, employmentType: index === 2 ? 'part_time' : 'full_time', compensationType: index === 2 ? 'hourly_task' : 'full_time_attendance', contractType: 'قرارداد دائم', employmentStatus: index === 4 ? 'leave' : 'active',
     hireDate: `202${index % 4 + 2}-0${(index % 8) + 1}-1${index % 8}`, workLocation: index % 3 === 0 ? 'دفتر مرکزی تهران' : 'شعبه / ترکیبی', workMode: index % 3 === 0 ? 'حضوری' : 'ترکیبی',
     salary: 65_000_000 + index * 7_500_000, leaveBalance: 12 - (index % 6),
   })),
-  { id: 'u9', personnelCode: 'EMP-1048', fullName: 'زهرا حاتمی', phone: '۰۹۱۲۴۴۴۵۵۶۶', email: 'zahra.hatami@trileez.ir', nationalId: '۰۰۱۲۳۴۵۶۷۸', jobTitle: 'کارشناس منابع انسانی', department: 'منابع انسانی', managerId: 'u1', employmentType: 'full_time', contractType: 'قرارداد دائم', employmentStatus: 'active', hireDate: '2023-05-12', workLocation: 'دفتر مرکزی تهران', workMode: 'ترکیبی', salary: 72_000_000, leaveBalance: 18 },
-  { id: 'u10', personnelCode: 'EMP-1049', fullName: 'محمد احمدی', phone: '۰۹۱۲۶۶۷۷۸۸۹', email: 'mohammad.ahmadi@trileez.ir', nationalId: '۰۰۱۲۳۴۵۶۷۹', jobTitle: 'مدیر فنی', department: 'فنی', managerId: 'u1', employmentType: 'full_time', contractType: 'قرارداد دائم', employmentStatus: 'active', hireDate: '2022-08-20', workLocation: 'دفتر مرکزی تهران', workMode: 'حضوری', salary: 125_000_000, leaveBalance: 9 },
-  { id: 'u11', personnelCode: 'EMP-1050', fullName: 'آرزو کریمی', phone: '۰۹۱۲۳۳۴۴۵۵۶', email: 'arezo.karimi@trileez.ir', nationalId: '۰۰۱۲۳۴۵۶۸۰', jobTitle: 'کارشناس بازاریابی', department: 'بازاریابی', managerId: 'u7', employmentType: 'project', contractType: 'قرارداد پروژه‌ای', employmentStatus: 'active', hireDate: '2025-01-15', workLocation: 'دورکاری', workMode: 'دورکاری', salary: 58_000_000, leaveBalance: 7 },
-  { id: 'u12', personnelCode: 'EMP-1051', fullName: 'نیما مرادی', phone: '۰۹۱۲۷۷۸۸۹۹۰', email: 'nima.moradi@trileez.ir', nationalId: '۰۰۱۲۳۴۵۶۸۱', jobTitle: 'کارآموز توسعه', department: 'فنی', managerId: 'u10', employmentType: 'intern', contractType: 'کارآموزی', employmentStatus: 'active', hireDate: '2026-02-10', workLocation: 'دفتر مرکزی تهران', workMode: 'حضوری', salary: 32_000_000, leaveBalance: 3 },
+  { id: 'u9', personnelCode: 'EMP-1048', fullName: 'زهرا حاتمی', phone: '۰۹۱۲۴۴۴۵۵۶۶', email: 'zahra.hatami@trileez.ir', nationalId: '۰۰۱۲۳۴۵۶۷۸', jobTitle: 'کارشناس منابع انسانی', department: 'منابع انسانی', managerId: 'u1', employmentType: 'full_time', compensationType: 'full_time_attendance', contractType: 'قرارداد دائم', employmentStatus: 'active', hireDate: '2023-05-12', workLocation: 'دفتر مرکزی تهران', workMode: 'ترکیبی', salary: 72_000_000, leaveBalance: 18 },
+  { id: 'u10', personnelCode: 'EMP-1049', fullName: 'محمد احمدی', phone: '۰۹۱۲۶۶۷۷۸۸۹', email: 'mohammad.ahmadi@trileez.ir', nationalId: '۰۰۱۲۳۴۵۶۷۹', jobTitle: 'مدیر فنی', department: 'فنی', managerId: 'u1', employmentType: 'full_time', compensationType: 'full_time_attendance', contractType: 'قرارداد دائم', employmentStatus: 'active', hireDate: '2022-08-20', workLocation: 'دفتر مرکزی تهران', workMode: 'حضوری', salary: 125_000_000, leaveBalance: 9 },
+  { id: 'u11', personnelCode: 'EMP-1050', fullName: 'آرزو کریمی', phone: '۰۹۱۲۳۳۴۴۵۵۶', email: 'arezo.karimi@trileez.ir', nationalId: '۰۰۱۲۳۴۵۶۸۰', jobTitle: 'کارشناس بازاریابی', department: 'بازاریابی', managerId: 'u7', employmentType: 'project', compensationType: 'hourly_task', contractType: 'قرارداد پروژه‌ای', employmentStatus: 'active', hireDate: '2025-01-15', workLocation: 'دورکاری', workMode: 'دورکاری', salary: 58_000_000, leaveBalance: 7 },
+  { id: 'u12', personnelCode: 'EMP-1051', fullName: 'نیما مرادی', phone: '۰۹۱۲۷۷۸۸۹۹۰', email: 'nima.moradi@trileez.ir', nationalId: '۰۰۱۲۳۴۵۶۸۱', jobTitle: 'کارآموز توسعه', department: 'فنی', managerId: 'u10', employmentType: 'intern', compensationType: 'full_time_attendance', contractType: 'کارآموزی', employmentStatus: 'active', hireDate: '2026-02-10', workLocation: 'دفتر مرکزی تهران', workMode: 'حضوری', salary: 32_000_000, leaveBalance: 3 },
 ];
 
 const employeeIds = employees.map((employee) => employee.id);
@@ -687,12 +692,13 @@ export const performanceReasons: PerformancePointReason[] = [
   { id: 'reason-custom-negative', title: 'کسر امتیاز با توضیح سفارشی', defaultPoints: -5, direction: 'negative', category: 'سایر' },
 ];
 export const performanceEvents: PerformancePointEvent[] = Array.from({ length: 24 }, (_, index) => ({
-  id: `point-${index + 1}`, employeeId: employeeIds[index % employeeIds.length], reasonId: performanceReasons[index % performanceReasons.length].id,
+  id: `point-${index + 1}`, employeeId: employeeIds[index % employeeIds.length], reason: performanceReasons[index % performanceReasons.length].title, reasonId: performanceReasons[index % performanceReasons.length].id,
   points: performanceReasons[index % performanceReasons.length].defaultPoints, date: daysAgo(index + 1).slice(0, 10),
   description: index % 3 === 0 ? 'خروجی با کیفیت و زودتر از برنامه تحویل شد.' : 'رویداد عملکردی ثبت‌شده توسط مدیر مستقیم.',
   projectId: index % 4 === 0 ? projects[index % projects.length].id : undefined,
   taskId: index % 4 === 0 ? tasks[index % tasks.length].id : undefined,
   createdBy: 'u1',
+  createdAt: daysAgo(index + 1),
 }));
 const mockPerformanceGrade = (score: number): PerformancePeriod['grade'] => score >= 95 ? 'A+' : score >= 85 ? 'A' : score >= 75 ? 'B' : score >= 65 ? 'C' : score >= 50 ? 'D' : 'F';
 export const performancePeriods: PerformancePeriod[] = employeeIds.flatMap((employeeId, index) => {
@@ -755,12 +761,19 @@ export const messages: Message[] = [
 ];
 
 export const projectEvents: ProjectEvent[] = [
-  { id: 'pe1', projectId: 'p1', personId: 'u2', eventType: 'شروع پروژه', stage: 'انجام شد', priority: 'بالا', status: 'completed', date: daysAgo(44), registeredBy: 'u1', description: 'شروع رسمی پروژه و ایجاد دسترسی اعضای تیم.', result: 'برنامه اجرایی تایید شد.', customerVisible: false },
-  { id: 'pe2', projectId: 'p1', personId: 'u4', eventType: 'تحویل نسخه اولیه سایت', stage: 'انجام شد', priority: 'بالا', status: 'completed', date: daysAgo(4), registeredBy: 'u2', description: 'نسخه اولیه برای بازبینی مشتری آماده شد.', result: 'بازخورد مشتری برای مرحله بعد دریافت شد.', attachments: ['دمو-نسخه-اول.pdf'], customerVisible: true },
-  { id: 'pe3', projectId: 'p2', personId: 'u8', eventType: 'عضویت در پروژه', stage: 'انجام شد', priority: 'عادی', status: 'completed', date: daysAgo(12), registeredBy: 'u6', description: 'ایجاد دسترسی پروژه و شروع فعالیت کارشناس زیرساخت.', customerVisible: false },
-  { id: 'pe4', projectId: 'p3', personId: 'u5', eventType: 'توافق مالی', stage: 'در حال پیگیری', priority: 'بسیار بالا', status: 'open', date: daysAgo(2), registeredBy: 'u1', description: 'پیگیری مانده قرارداد و زمان‌بندی پرداخت مرحله دوم.', result: 'جلسه مالی با مشتری در انتظار برگزاری است.', customerVisible: false },
-  { id: 'pe5', projectId: 'p4', personId: 'u3', eventType: 'تغییر وضعیت پروژه', stage: 'ثبت شد', priority: 'بالا', status: 'open', date: daysAgo(7), registeredBy: 'u2', description: 'پروژه به دلیل تغییر اولویت مشتری موقتاً متوقف شد.', customerVisible: true },
-  { id: 'pe6', personId: 'u9', eventType: 'اخطار', stage: 'انجام شد', priority: 'بسیار بالا', status: 'completed', date: daysAgo(9), registeredBy: 'u1', description: 'ثبت اخطار اداری و جلسه پیگیری عملکرد.', result: 'برنامه اصلاحی با کارمند توافق شد.', customerVisible: false },
+  { id: 'pe1', projectId: 'p1', personId: 'u2', eventType: 'دستاورد یا نقطه عطف', title: 'شروع رسمی پروژه', stage: 'انجام شد', priority: 'بالا', status: 'completed', date: daysAgo(44), registeredBy: 'u1', createdAt: daysAgo(44), description: 'شروع رسمی پروژه و ایجاد دسترسی اعضای تیم.', result: 'برنامه اجرایی تایید شد.', customerVisible: false },
+  { id: 'pe2', projectId: 'p1', personId: 'u4', eventType: 'دستاورد یا نقطه عطف', title: 'تحویل نسخه اولیه سایت', stage: 'انجام شد', priority: 'بالا', status: 'completed', date: daysAgo(4), registeredBy: 'u2', createdAt: daysAgo(4), description: 'نسخه اولیه برای بازبینی مشتری آماده شد.', result: 'بازخورد مشتری برای مرحله بعد دریافت شد.', attachments: ['دمو-نسخه-اول.pdf'], customerVisible: true },
+  { id: 'pe3', projectId: 'p2', personId: 'u8', eventType: 'عضویت کارمند در پروژه', title: 'عضویت کارشناس زیرساخت', stage: 'انجام شد', priority: 'عادی', status: 'completed', date: daysAgo(12), registeredBy: 'u6', createdAt: daysAgo(12), description: 'ایجاد دسترسی پروژه و شروع فعالیت کارشناس زیرساخت.', customerVisible: false },
+  { id: 'pe4', projectId: 'p3', personId: 'u5', eventType: 'رویداد قرارداد', title: 'پیگیری توافق مالی', stage: 'در حال پیگیری', priority: 'بسیار بالا', status: 'open', date: daysAgo(2), registeredBy: 'u1', createdAt: daysAgo(2), description: 'پیگیری مانده قرارداد و زمان‌بندی پرداخت مرحله دوم.', result: 'جلسه مالی با مشتری در انتظار برگزاری است.', customerVisible: false },
+  { id: 'pe5', projectId: 'p4', personId: 'u3', eventType: 'تغییر وضعیت پروژه', title: 'توقف موقت پروژه', stage: 'ثبت شد', priority: 'بالا', status: 'open', date: daysAgo(7), registeredBy: 'u2', createdAt: daysAgo(7), description: 'پروژه به دلیل تغییر اولویت مشتری موقتاً متوقف شد.', customerVisible: true },
+  { id: 'pe6', personId: 'u9', eventType: 'مشکل یا رخداد مهم', title: 'اخطار اداری', stage: 'انجام شد', priority: 'بسیار بالا', status: 'completed', date: daysAgo(9), registeredBy: 'u1', createdAt: daysAgo(9), description: 'ثبت اخطار اداری و جلسه پیگیری عملکرد.', result: 'برنامه اصلاحی با کارمند توافق شد.', customerVisible: false },
+];
+
+export const meetings: Meeting[] = [
+  { id: 'meeting-1', title: 'جلسه هفتگی پیشرفت پروژه پردیس', startAt: daysFromNow(0).slice(0, 11) + '10:00:00.000Z', durationMinutes: 60, status: 'scheduled', organizerId: 'u2', participantIds: ['u1', 'u2', 'u4'], projectId: 'p1', employeeIds: ['u1', 'u2', 'u4'], departments: ['فنی', 'محصول'], department: 'فنی', customerId: 'c1', agenda: 'بررسی پیشرفت فاز استقرار و رفع موانع بین تیمی.', discussionSummary: 'تیم فنی وضعیت استقرار را ارائه کرد و تیم محصول اولویت‌های نسخه بعد را توضیح داد.', decisions: 'نسخه اصلاحی تا پایان هفته آماده شود.\nبازبینی مشتری برای دوشنبه برنامه‌ریزی شود.', actionItems: 'تکمیل گزارش فنی — مسئول: تیم فنی — موعد: پایان هفته', notes: 'گزارش وضعیت قبل از جلسه آماده شود.', outcome: 'برنامه تحویل مورد توافق قرار گرفت.', followUpActions: 'ثبت تصمیم‌ها و تعیین مسئول هر اقدام.', taskIds: ['t1', 't3'], attachments: ['گزارش-وضعیت-هفته.pdf'], meetingDocument: { name: 'صورت-جلسه-پیشرفت.pdf', type: 'application/pdf', size: 184320 }, createdBy: 'u2', createdAt: daysAgo(1) },
+  { id: 'meeting-2', title: 'جلسه تأیید نسخه اولیه با مشتری', startAt: daysAgo(4), durationMinutes: 90, status: 'completed', organizerId: 'u7', participantIds: ['u7', 'u3', 'cu1'], projectId: 'p1', customerId: 'c1', description: 'ارائه نسخه اولیه و دریافت بازخورد مشتری.', notes: 'مشتری درخواست اصلاح صفحه گزارش را مطرح کرد.', outcome: 'نسخه اولیه تأیید مشروط شد.', followUpActions: 'ایجاد وظیفه اصلاح گزارش و ارسال نسخه جدید.', taskIds: ['t8'], createdBy: 'u7', createdAt: daysAgo(5) },
+  { id: 'meeting-3', title: 'جلسه هماهنگی منابع انسانی', startAt: daysFromNow(2), durationMinutes: 45, status: 'scheduled', organizerId: 'u9', participantIds: ['u1', 'u9', 'u10'], employeeIds: ['u9', 'u10'], departments: ['منابع انسانی', 'مدیریت'], department: 'منابع انسانی', agenda: 'هماهنگی برنامه ارزیابی عملکرد و استخدام فصل بعد.', discussionSummary: 'نیازهای استخدامی واحدها و تقویم ارزیابی بررسی شد.', decisions: 'تقویم ارزیابی تا پایان هفته ابلاغ شود.', actionItems: 'ارسال فرم نیازسنجی به مدیران واحدها.', createdBy: 'u9', createdAt: daysAgo(2) },
+  { id: 'meeting-4', title: 'جلسه بدون رابطه مشخص', startAt: daysAgo(1), durationMinutes: 30, status: 'cancelled', organizerId: 'u1', participantIds: ['u1', 'u5'], description: 'جلسه داخلی لغوشده برای ثبت سابقه و پیگیری.', notes: 'به زمان دیگری منتقل شد.', createdBy: 'u1', createdAt: daysAgo(3) },
 ];
 
 export const customerUsers: User[] = [

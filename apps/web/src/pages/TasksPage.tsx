@@ -7,7 +7,7 @@ import PageHeader from '../components/common/PageHeader.tsx';
 import TaskFormDialog from '../components/common/TaskFormDialog.tsx';
 import { PriorityChip, TaskStatusChip } from '../components/common/StatusChip.tsx';
 import UserAvatar from '../components/common/UserAvatar.tsx';
-import { customers, taskLabels, users } from '../mock/data.ts';
+import { customers, taskLabels, users } from '../services/repositories.ts';
 import type { Task } from '../types/index.ts';
 import { formatDate, priorityLabel, taskStatusLabel } from '../utils/format.ts';
 import CsvToolbar from '../components/common/CsvToolbar.tsx';
@@ -23,18 +23,17 @@ export default function TasksPage() {
   useEffect(() => projectRepository.subscribe(setProjectRows), []);
   useEffect(() => timesheetRepository.subscribe(setTimesheetRows), []);
   const closeEditor = () => { setEditorOpen(false); setEditing(null); setParams((current) => { const next = new URLSearchParams(current); next.delete('create'); return next; }, { replace: true }); };
-  const saveTask = (values: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const saveTask = async (values: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>) => {
     const now = new Date().toISOString();
     if (editing) {
       const updated = { ...editing, ...values, updatedAt: now };
-      taskRepository.update(editing.id, updated);
+      await taskRepository.update(editing.id, updated);
     } else {
-      const created = { ...values, id: `t-new-${Date.now()}`, createdAt: now, updatedAt: now };
-      taskRepository.create(created);
+      const created = await taskRepository.create({ ...values, id: `t-new-${Date.now()}`, createdAt: now, updatedAt: now });
       const recipients = [...new Set(values.assigneeIds ?? [values.assigneeId])].filter(Boolean);
-      recipients.forEach((recipientId) => {
+      await Promise.all(recipients.map(async (recipientId) => {
         if (recipientId === 'u1') return;
-        notify({
+        await notify({
           id: `notification-task-${created.id}-${recipientId}`,
           title: 'وظیفه جدید به شما اختصاص یافت',
           body: `${created.title} • پروژه: ${projectRows.find((project) => project.id === created.projectId)?.name ?? '—'}`,
@@ -48,12 +47,12 @@ export default function TasksPage() {
           projectId: created.projectId,
           smsStatus: 'queued',
         });
-      });
+      }));
     }
     closeEditor();
   };
-  const importTasks = (records: Record<string, string>[]) => {
-    const errors: string[] = []; const created: Task[] = [];
+  const importTasks = async (records: Record<string, string>[]) => {
+    const errors: string[] = []; const candidates: Task[] = [];
     records.forEach((row, index) => {
       const title = row['عنوان'] || row['عنوان وظیفه']; const project = projectRows.find((item) => item.name === row['پروژه'] || item.code === row['کد پروژه']);
       if (!title || !project) { errors.push(`ردیف ${index + 2}: عنوان و پروژه معتبر الزامی است.`); return; }
@@ -64,9 +63,14 @@ export default function TasksPage() {
       if (!member) { errors.push(`ردیف ${index + 2}: پروژه عضو فعال ندارد.`); return; }
       const activity = projectActivityRepository.list().find((item) => item.projectId === project.id && member.roleIds.includes(item.roleId));
       const due = row['موعد'] || row['تاریخ پایان'] || new Date().toISOString();
-      created.push({ id: `t-import-${Date.now()}-${index}`, title, projectId: project.id, phaseId: phase.id, activityId: activity?.id, description: row['توضیحات'] ?? '', status: 'todo', priority: 'medium', assigneeId: member.personId, assigneeIds: [member.personId], assigneeMemberIds: [member.id], followerIds: [project.managerId], dueDate: due, startDate: row['تاریخ شروع'], estimatedHours: Number(row['ساعت تخمینی']) || 0, hourlyRate: Number(row['نرخ ساعتی']) || 0, tags: (row['تگ‌ها'] ?? '').split(/[،,]/).filter(Boolean), labelIds: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+      candidates.push({ id: `t-import-${Date.now()}-${index}`, title, projectId: project.id, phaseId: phase.id, activityId: activity?.id, description: row['توضیحات'] ?? '', status: 'todo', priority: 'medium', assigneeId: member.personId, assigneeIds: [member.personId], assigneeMemberIds: [member.id], followerIds: [project.managerId], dueDate: due, startDate: row['تاریخ شروع'], estimatedHours: Number(row['ساعت تخمینی']) || 0, hourlyRate: Number(row['نرخ ساعتی']) || 0, tags: (row['تگ‌ها'] ?? '').split(/[،,]/).filter(Boolean), labelIds: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     });
-    created.forEach((task) => taskRepository.create(task)); return { created: created.length, errors };
+    let created = 0;
+    for (const [index, task] of candidates.entries()) {
+      try { await taskRepository.create(task); created += 1; }
+      catch (error) { errors.push(`ردیف ${index + 2}: ${error instanceof Error ? error.message : 'ذخیره در سرور انجام نشد.'}`); }
+    }
+    return { created, errors };
   };
   return <Box>
     <PageHeader title="کارها" subtitle="فهرست کارها با وضعیت، اولویت و مسئول" crumbs={['تری‌لیز', 'کارها']} actions={<Button variant="contained" startIcon={<Add />} onClick={() => { setEditing(null); setEditorOpen(true); }}>وظیفه جدید</Button>} />

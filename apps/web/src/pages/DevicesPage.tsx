@@ -1,20 +1,23 @@
-import { Box, Card, Dialog, DialogContent, DialogTitle, LinearProgress, Stack, Tab, Tabs, Typography } from '@mui/material';
+import { Alert, Box, Card, Dialog, DialogContent, DialogTitle, LinearProgress, Stack, Tab, Tabs, Typography } from '@mui/material';
 import PageHeader from '../components/common/PageHeader.tsx';
 import { DeviceStatusChip } from '../components/common/StatusChip.tsx';
 import DataTable from '../components/common/DataTable.tsx';
 import CsvToolbar from '../components/common/CsvToolbar.tsx';
-import { devices } from '../mock/data.ts';
+import { deviceRepository } from '../services/repositories.ts';
 import { formatNumber, formatRelative } from '../utils/format.ts';
 import { useSearchParams } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export default function DevicesPage() {
   const [params, setParams] = useSearchParams();
+  const [devices, setDevices] = useState(() => deviceRepository.list());
+  useEffect(() => deviceRepository.subscribe(setDevices), []);
   const selected = devices.find((device) => device.id === params.get('device'));
   const [detailTab, setDetailTab] = useState(0);
   return (
     <Box>
       <PageHeader title="دستگاه‌ها" subtitle="فهرست دارایی‌های متصل به Agent تری‌لیز" crumbs={['تری‌لیز', 'دستگاه‌ها']} />
+      <Alert severity="warning" sx={{ mb: 2 }}>Agent دسکتاپ و telemetry زنده خارج از محدوده MVP هستند. رکوردهای این صفحه فقط داده‌های ذخیره‌شده برای نمایش ساختار آینده‌اند و وضعیت زنده دستگاه محسوب نمی‌شوند.</Alert>
       <Card sx={{ p: 1 }}>
         <DataTable
           rows={devices}

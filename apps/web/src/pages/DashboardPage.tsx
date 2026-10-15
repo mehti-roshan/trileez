@@ -7,6 +7,7 @@ import {
   WarningAmberOutlined,
 } from '@mui/icons-material';
 import { Box, Button, Card, CardContent, LinearProgress, Stack, Typography } from '@mui/material';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Bar,
@@ -25,21 +26,30 @@ import StatCard from '../components/common/StatCard.tsx';
 import UserAvatar from '../components/common/UserAvatar.tsx';
 import {
   activities,
-  customers,
-  devices,
-  projects,
-  tasks,
-  ticketCategorySeries,
-  tickets,
   users,
-  weeklyTaskSeries,
-} from '../mock/data.ts';
+} from '../services/repositories.ts';
+import { customerRepository, deviceRepository, projectRepository, taskRepository, ticketRepository } from '../services/repositories.ts';
 import { formatNumber, formatRelative } from '../utils/format.ts';
 
 const pieColors = ['#1E3A8A', '#DC2626', '#D97706', '#64748B'];
 
 export default function DashboardPage() {
   const navigate = useNavigate();
+  const [projects, setProjects] = useState(() => projectRepository.list());
+  const [tasks, setTasks] = useState(() => taskRepository.list());
+  const [customers, setCustomers] = useState(() => customerRepository.list());
+  const [tickets, setTickets] = useState(() => ticketRepository.list());
+  const [devices, setDevices] = useState(() => deviceRepository.list());
+  useEffect(() => {
+    const subscriptions = [
+      projectRepository.subscribe(setProjects),
+      taskRepository.subscribe(setTasks),
+      customerRepository.subscribe(setCustomers),
+      ticketRepository.subscribe(setTickets),
+      deviceRepository.subscribe(setDevices),
+    ];
+    return () => subscriptions.forEach((unsubscribe) => unsubscribe());
+  }, []);
   const today = new Date();
   today.setHours(23, 59, 59, 999);
   const start = new Date();
@@ -49,6 +59,17 @@ export default function DashboardPage() {
   const overdue = tasks.filter((task) => task.dueDate && new Date(task.dueDate) < start && task.status !== 'done');
   const openTickets = tickets.filter((ticket) => ticket.status !== 'closed');
   const onlineDevices = devices.filter((device) => device.status === 'online');
+  const ticketCategorySeries = [
+    { name: 'پشتیبانی', value: tickets.filter((ticket) => ticket.category === 'support').length },
+    { name: 'خطا', value: tickets.filter((ticket) => ticket.category === 'bug').length },
+    { name: 'درخواست قابلیت', value: tickets.filter((ticket) => ticket.category === 'feature').length },
+    { name: 'سایر', value: tickets.filter((ticket) => ticket.category === 'other').length },
+  ];
+  const weeklyTaskSeries = Array.from({ length: 7 }, (_, offset) => {
+    const day = new Date(); day.setDate(day.getDate() - (6 - offset));
+    const key = day.toISOString().slice(0, 10);
+    return { name: day.toLocaleDateString('fa-IR', { weekday: 'short' }), created: tasks.filter((task) => task.createdAt?.slice(0, 10) === key).length, completed: tasks.filter((task) => task.status === 'done' && task.updatedAt?.slice(0, 10) === key).length };
+  });
 
   return (
     <Box>

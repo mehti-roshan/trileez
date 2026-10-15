@@ -111,7 +111,7 @@ export default function Header({ onMenu }: { onMenu: () => void }) {
       <Menu anchorEl={noteAnchor} open={Boolean(noteAnchor)} onClose={() => setNoteAnchor(null)} slotProps={{ paper: { sx: { width: 320 } } }}>
         {notifications.length === 0 && <MenuItem disabled sx={{ justifyContent: 'center', py: 2 }}>اعلانی برای نمایش وجود ندارد.</MenuItem>}
         {notifications.slice(0, 6).map((item) => (
-          <MenuItem key={item.id} onClick={() => { notificationRepository.update(item.id, { read: true }); setNoteAnchor(null); if (item.conversationId) navigate(`/chat?conversation=${item.conversationId}`); else if (item.ticketId) navigate(`/tickets/${item.ticketId}`); else if (item.taskId) navigate(`/tasks/${item.taskId}`); else if (item.projectId) navigate(`/projects/${item.projectId}`); else navigate('/notifications'); }} sx={{ whiteSpace: 'normal', alignItems: 'flex-start', py: 1.25 }}>
+          <MenuItem key={item.id} onClick={async () => { await notificationRepository.update(item.id, { read: true }); setNoteAnchor(null); if (item.conversationId) navigate(`/chat?conversation=${item.conversationId}`); else if (item.ticketId) navigate(`/tickets/${item.ticketId}`); else if (item.taskId) navigate(`/tasks/${item.taskId}`); else if (item.projectId) navigate(`/projects/${item.projectId}`); else navigate('/notifications'); }} sx={{ whiteSpace: 'normal', alignItems: 'flex-start', py: 1.25 }}>
             <Box>
               <Typography variant="body2" sx={{ fontWeight: item.read ? 500 : 700 }}>
                 {item.title}

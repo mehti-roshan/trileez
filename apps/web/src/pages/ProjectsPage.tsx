@@ -5,12 +5,12 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import PageHeader from '../components/common/PageHeader.tsx';
 import ProjectFormDialog, { type ProjectFormValues } from '../components/common/ProjectFormDialog.tsx';
 import { ProjectStatusChip } from '../components/common/StatusChip.tsx';
-import { chatGroups, customers, users } from '../mock/data.ts';
+import { customers, users } from '../services/repositories.ts';
 import { formatCurrency, formatDate, formatNumber } from '../utils/format.ts';
 import { customerDisplayName } from '../utils/customer.ts';
 import CsvToolbar from '../components/common/CsvToolbar.tsx';
 import type { Project } from '../types/index.ts';
-import { projectPhaseRepository, projectRepository, taskRepository } from '../services/repositories.ts';
+import { chatGroupRepository, projectPhaseRepository, projectRepository, taskRepository } from '../services/repositories.ts';
 import DataTable from '../components/common/DataTable.tsx';
 import { derivedProjectProgress } from '../services/projectManagement.ts';
 import { provisionProjectExecution } from '../services/projectProvisioning.ts';
@@ -23,25 +23,35 @@ export default function ProjectsPage() {
   useEffect(() => taskRepository.subscribe(setTaskRows), []);
   useEffect(() => projectPhaseRepository.subscribe(setPhaseRows), []);
   const closeForm = () => { setLocalOpen(false); setParams((current) => { const next = new URLSearchParams(current); next.delete('create'); return next; }, { replace: true }); };
-  const save = (values: ProjectFormValues) => {
+  const save = async (values: ProjectFormValues) => {
     const id = `p-new-${Date.now()}`; const groupId = `chat-project-${id}`;
     const project: Project = { ...values, id, code: values.code || `P-${700100 + rows.length}`, progress: 0, members: [values.managerId], tasksCount: 0, completedTasksCount: 0, description: values.description || 'پروژه جدید سازمانی', defaultChatGroupId: groupId };
-    chatGroups.push({ id: groupId, name: `پروژه ${project.name}`, projectId: id, memberIds: project.members, isDefault: true, createdAt: new Date().toISOString() });
-    projectRepository.create(project); provisionProjectExecution(project); closeForm();
+    const created = await projectRepository.create(project);
+    await chatGroupRepository.create({ id: groupId, name: `پروژه ${created.name}`, projectId: created.id, memberIds: created.members, isDefault: true, createdAt: new Date().toISOString() });
+    await provisionProjectExecution(created);
+    closeForm();
   };
-  const importProjects = (records: Record<string, string>[]) => {
-    const errors: string[] = []; const created: Project[] = [];
+  const importProjects = async (records: Record<string, string>[]) => {
+    const errors: string[] = []; const candidates: Project[] = [];
     records.forEach((row, index) => {
       const name = row['نام پروژه'] || row['نام']; const customer = customers.find((item) => item.company === row['مشتری'] || item.name === row['مشتری'] || item.id === row['شناسه مشتری']);
       if (!name || !customer) { errors.push(`ردیف ${index + 2}: نام پروژه و مشتری معتبر الزامی است.`); return; }
       const id = `p-import-${Date.now()}-${index}`; const groupId = `chat-project-${id}`;
       const project: Project = { id, code: row['کد'] || `P-${700200 + rows.length + index}`, name, customerId: customer.id, managerId: 'u2', budget: Number(row['بودجه'] || 0), grade: normalizeProjectGrade(row['درجه اهمیت'] || row['امتیاز اهمیت']), tags: normalizeProjectTags((row['برچسب‌ها'] || row['تگ‌ها'] || '').split(/[،,]/)), status: 'active', progress: 0, startDate: row['تاریخ شروع'] || new Date().toISOString().slice(0, 10), endDate: row['تاریخ پایان'] || new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10), members: ['u2'], tasksCount: 0, completedTasksCount: 0, color: '#1E3A8A', description: row['توضیحات'] || 'پروژه واردشده', defaultChatGroupId: groupId };
-      chatGroups.push({ id: groupId, name: `پروژه ${name}`, projectId: id, memberIds: ['u2'], isDefault: true, createdAt: new Date().toISOString() }); created.push(project);
+      candidates.push(project);
     });
-    created.forEach((project) => {
-      projectRepository.create(project);
-      provisionProjectExecution(project);
-    }); return { created: created.length, errors };
+    let created = 0;
+    for (const [index, project] of candidates.entries()) {
+      try {
+        const saved = await projectRepository.create(project);
+        await chatGroupRepository.create({ id: project.defaultChatGroupId!, name: `پروژه ${saved.name}`, projectId: saved.id, memberIds: saved.members, isDefault: true, createdAt: new Date().toISOString() });
+        await provisionProjectExecution(saved);
+        created += 1;
+      } catch (error) {
+        errors.push(`ردیف ${index + 2}: ${error instanceof Error ? error.message : 'ذخیره در سرور انجام نشد.'}`);
+      }
+    }
+    return { created, errors };
   };
 
   return (

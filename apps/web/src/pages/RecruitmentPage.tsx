@@ -47,11 +47,11 @@ function RecruitmentForm({ onClose, onCreated }: { onClose: () => void; onCreate
   const [values, setValues] = useState<JobInput>({ title: '', department: '', employmentType: 'full_time', openings: 1, status: 'open', postedAt: new Date().toISOString().slice(0, 10) });
   const [error, setError] = useState('');
   const set = <K extends keyof JobInput>(key: K, value: JobInput[K]) => setValues((current) => ({ ...current, [key]: value }));
-  const submit = () => {
+  const submit = async () => {
     const input = { ...values, title: values.title.trim(), department: values.department.trim() };
     const errors = validateJobOpening(input);
     if (errors.length) { setError(`فیلدهای زیر را بررسی کنید: ${errors.join('، ')}`); return; }
-    onCreated(jobOpeningRepository.create({ ...input, applicants: 0 }));
+    onCreated(await jobOpeningRepository.create({ ...input, applicants: 0 }));
   };
   return <Dialog open onClose={onClose} fullWidth maxWidth="sm" slotProps={{ paper: { sx: { direction: 'rtl' } } }}>
     <DialogTitle sx={{ fontWeight: 800 }}>ایجاد موقعیت استخدامی</DialogTitle>

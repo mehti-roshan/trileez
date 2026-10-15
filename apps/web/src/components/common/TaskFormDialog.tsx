@@ -2,15 +2,15 @@ import { Alert, Autocomplete, Button, Dialog, DialogActions, DialogContent, Dial
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useState } from 'react';
 import JalaliDatePicker from './JalaliDatePicker.tsx';
-import { taskLabels } from '../../mock/data.ts';
+import { taskLabels } from '../../services/repositories.ts';
 import type { Priority, Task, TaskStatus } from '../../types/index.ts';
 import { TagSelect } from './TagSelect.tsx';
 import { projectActivityRepository, projectMemberRepository, projectPhaseRepository, projectRepository, userRepository } from '../../services/repositories.ts';
 
 const empty = { title: '', projectId: '', phaseId: '', activityId: '', description: '', status: 'todo' as TaskStatus, priority: 'medium' as Priority, startDate: '', dueDate: '', repeatEvery: '', estimatedHours: '8', hourlyRate: '200000', assigneeIds: [] as string[], followerIds: [] as string[], labelIds: [] as string[], tags: '', customerVisible: false };
 
-export default function TaskFormDialog({ open, task, defaultProjectId, onClose, onSave }: { open: boolean; task?: Task | null; defaultProjectId?: string; onClose: () => void; onSave: (values: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>) => void }) {
-  const [form, setForm] = useState(empty); const [error, setError] = useState(''); const [saved, setSaved] = useState(false);
+export default function TaskFormDialog({ open, task, defaultProjectId, onClose, onSave }: { open: boolean; task?: Task | null; defaultProjectId?: string; onClose: () => void; onSave: (values: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>) => unknown | Promise<unknown> }) {
+  const [form, setForm] = useState(empty); const [error, setError] = useState(''); const [saved, setSaved] = useState(false); const [submitting, setSubmitting] = useState(false);
   const [projectRows, setProjectRows] = useState(() => projectRepository.list());
   const [phaseRows, setPhaseRows] = useState(() => projectPhaseRepository.list());
   const [memberRows, setMemberRows] = useState(() => projectMemberRepository.list());
@@ -27,14 +27,20 @@ export default function TaskFormDialog({ open, task, defaultProjectId, onClose, 
     setError('');
   }, [defaultProjectId, open, task]);
   const set = (key: string, value: unknown) => setForm((current) => ({ ...current, [key]: value }));
-  const submit = () => {
+  const submit = async () => {
     if (!form.title.trim() || !form.projectId || !form.phaseId) return setError('عنوان، پروژه و فاز پروژه الزامی هستند.');
     if (form.startDate && form.dueDate && form.dueDate < form.startDate) return setError('تاریخ پایان نمی‌تواند قبل از تاریخ شروع باشد.');
     if (Number(form.hourlyRate) < 0 || Number(form.estimatedHours) < 0 || (form.repeatEvery && Number(form.repeatEvery) < 1)) return setError('نرخ ساعتی، ساعت تخمینی و فاصله تکرار باید معتبر باشند.');
-    const assignees = form.assigneeIds.length ? form.assigneeIds : ['u1'];
+    const assignees = form.assigneeIds;
+    if (!assignees.length) return setError('حداقل یک عضو پروژه باید به وظیفه اختصاص داده شود.');
     const assigneeMemberIds = memberRows.filter((member) => member.projectId === form.projectId && assignees.includes(member.personId) && member.status === 'active').map((member) => member.id);
-    onSave({ title: form.title.trim(), projectId: form.projectId, phaseId: form.phaseId, activityId: form.activityId || undefined, description: form.description.trim(), status: form.status, priority: form.priority, assigneeId: assignees[0], assigneeIds: assignees, assigneeMemberIds, followerIds: form.followerIds, startDate: form.startDate || undefined, dueDate: form.dueDate || new Date().toISOString(), repeatEvery: form.repeatEvery ? Number(form.repeatEvery) : undefined, estimatedHours: Number(form.estimatedHours) || 0, hourlyRate: Number(form.hourlyRate) || 0, tags: form.tags.split(/[،,]/).map((tag) => tag.trim()).filter(Boolean), labelIds: form.labelIds, customerVisible: form.customerVisible });
-    setSaved(true); onClose();
+    if (assigneeMemberIds.length !== assignees.length) return setError('همه مسئولان انتخاب‌شده باید عضو فعال پروژه باشند.');
+    setSubmitting(true); setError('');
+    try {
+      await onSave({ title: form.title.trim(), projectId: form.projectId, phaseId: form.phaseId, activityId: form.activityId || undefined, description: form.description.trim(), status: form.status, priority: form.priority, assigneeId: assignees[0], assigneeIds: assignees, assigneeMemberIds, followerIds: form.followerIds, startDate: form.startDate || undefined, dueDate: form.dueDate || new Date().toISOString(), repeatEvery: form.repeatEvery ? Number(form.repeatEvery) : undefined, estimatedHours: Number(form.estimatedHours) || 0, hourlyRate: Number(form.hourlyRate) || 0, tags: form.tags.split(/[،,]/).map((tag) => tag.trim()).filter(Boolean), labelIds: form.labelIds, customerVisible: form.customerVisible });
+      setSaved(true); onClose();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'ذخیره وظیفه در سرور انجام نشد.'); }
+    finally { setSubmitting(false); }
   };
   return <><Dialog open={open} onClose={onClose} fullWidth maxWidth="md"><DialogTitle>{task ? 'ویرایش وظیفه' : 'ایجاد وظیفه جدید'}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
     <TextField required label="عنوان وظیفه" value={form.title} onChange={(e) => set('title', e.target.value)} />
@@ -50,5 +56,5 @@ export default function TaskFormDialog({ open, task, defaultProjectId, onClose, 
     <Autocomplete multiple options={userRows.filter((user) => !form.projectId || memberRows.some((member) => member.projectId === form.projectId && member.personId === user.id && member.status === 'active'))} value={userRows.filter((user) => form.followerIds.includes(user.id))} getOptionLabel={(user) => user.name} onChange={(_, next) => set('followerIds', next.map((user) => user.id))} renderInput={(params) => <TextField {...params} label="دنبال‌کنندگان" placeholder="مدیران و افراد مطلع" />} />
     <FormControl><InputLabel>نمایش برای مشتری</InputLabel><Select label="نمایش برای مشتری" value={form.customerVisible ? 'yes' : 'no'} onChange={(e) => set('customerVisible', e.target.value === 'yes')}><MenuItem value="no">خیر، فقط داخلی</MenuItem><MenuItem value="yes">بله، قابل مشاهده برای مشتری</MenuItem></Select></FormControl>
     {error && <Alert severity="error">{error}</Alert>}
-  </Stack></DialogContent><DialogActions><Button onClick={onClose}>انصراف</Button><Button variant="contained" onClick={submit}>ذخیره وظیفه</Button></DialogActions></Dialog><Snackbar open={saved} autoHideDuration={2500} onClose={() => setSaved(false)} message="وظیفه با موفقیت ذخیره شد." /></>;
+  </Stack></DialogContent><DialogActions><Button onClick={onClose} disabled={submitting}>انصراف</Button><Button variant="contained" onClick={() => void submit()} disabled={submitting}>{submitting ? 'در حال ذخیره…' : 'ذخیره وظیفه'}</Button></DialogActions></Dialog><Snackbar open={saved} autoHideDuration={2500} onClose={() => setSaved(false)} message="وظیفه با موفقیت ذخیره شد." /></>;
 }
