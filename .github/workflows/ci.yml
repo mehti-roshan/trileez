@@ -169,33 +169,44 @@ jobs:
           port="${VAR_SSH_PORT:-${VAR_PORT:-${SECRET_SSH_PORT:-${SECRET_PORT:-22}}}}"
           echo "port=$port" >> "$GITHUB_OUTPUT"
           echo "Using SSH port $port"
-      - name: Copy compose files
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ steps.ssh.outputs.port }}
-          source: "compose.yaml,deploy/vps.sh"
-          target: ${{ secrets.VPS_DEPLOY_PATH }}
-          overwrite: true
-          strip_components: 0
-      - name: Pull images and recreate panel
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ steps.ssh.outputs.port }}
-          command_timeout: 15m
-          envs: GHCR_USER,GHCR_TOKEN,IMAGE_PREFIX,IMAGE_TAG,DEPLOY_DIR
-          script: |
-            set -euo pipefail
-            chmod +x "$DEPLOY_DIR/deploy/vps.sh"
-            "$DEPLOY_DIR/deploy/vps.sh"
+      - name: Install deploy key
         env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > "$HOME/.ssh/deploy_key"
+          chmod 600 "$HOME/.ssh/deploy_key"
+      - name: Copy compose files
+        env:
+          SSH_HOST: ${{ secrets.VPS_HOST }}
+          SSH_USER: ${{ secrets.VPS_USER }}
+          SSH_PORT: ${{ steps.ssh.outputs.port }}
+          DEPLOY_DIR: ${{ secrets.VPS_DEPLOY_PATH }}
+        run: |
+          ssh_opts=(-i "$HOME/.ssh/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
+          ssh "${ssh_opts[@]}" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$DEPLOY_DIR/deploy'"
+          scp "${ssh_opts[@]}" -P "$SSH_PORT" compose.yaml "$SSH_USER@$SSH_HOST:$DEPLOY_DIR/compose.yaml"
+          scp "${ssh_opts[@]}" -P "$SSH_PORT" deploy/vps.sh "$SSH_USER@$SSH_HOST:$DEPLOY_DIR/deploy/vps.sh"
+      - name: Pull images and recreate panel
+        env:
+          SSH_HOST: ${{ secrets.VPS_HOST }}
+          SSH_USER: ${{ secrets.VPS_USER }}
+          SSH_PORT: ${{ steps.ssh.outputs.port }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
           IMAGE_PREFIX: ${{ needs.publish.outputs.image_prefix }}
           IMAGE_TAG: ${{ needs.publish.outputs.image_tag }}
           DEPLOY_DIR: ${{ secrets.VPS_DEPLOY_PATH }}
+        run: |
+          ssh_opts=(-i "$HOME/.ssh/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
+          {
+            echo "set -euo pipefail"
+            echo "export GHCR_USER=$(printf '%q' "$GHCR_USER")"
+            echo "export GHCR_TOKEN=$(printf '%q' "$GHCR_TOKEN")"
+            echo "export IMAGE_PREFIX=$(printf '%q' "$IMAGE_PREFIX")"
+            echo "export IMAGE_TAG=$(printf '%q' "$IMAGE_TAG")"
+            echo "export DEPLOY_DIR=$(printf '%q' "$DEPLOY_DIR")"
+            echo 'chmod +x "$DEPLOY_DIR/deploy/vps.sh"'
+            echo '"$DEPLOY_DIR/deploy/vps.sh"'
+          } | ssh "${ssh_opts[@]}" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash -s
