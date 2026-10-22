@@ -1,6 +1,7 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express';
 import multer from 'multer';
 import { RequestValidationError } from './validate.js';
+import { HttpError } from '../utils/httpError.js';
 import { logger } from '../observability/logger.js';
 import { recordUnhandledError } from '../observability/metrics.js';
 
@@ -24,6 +25,12 @@ export const errorHandler: ErrorRequestHandler = (error: unknown, req, res, next
   if (res.headersSent) return next(error);
   const typedError = error instanceof Error ? error : new Error('Unknown error');
   if (typedError instanceof RequestValidationError) {
+    logger.warn('request_validation_failed', {
+      method: req.method,
+      path: req.path,
+      issueCount: typedError.issues.length,
+      issues: typedError.issues.map((issue) => ({ location: issue.location, path: issue.path, code: issue.code, message: issue.message })),
+    });
     res.status(400).json({ error: typedError.message, code: typedError.code, issues: typedError.issues, ...identifiers(req) });
     return;
   }
@@ -36,8 +43,9 @@ export const errorHandler: ErrorRequestHandler = (error: unknown, req, res, next
       : 'statusCode' in typedError && typeof typedError.statusCode === 'number'
         ? typedError.statusCode
         : typedError.name === 'ValidationError' ? 400 : 500;
+  const explicitCode = typedError instanceof HttpError && typedError.code ? typedError.code : undefined;
   const code = invalidJson ? 'INVALID_JSON' : mongoCode === 11000 ? 'DUPLICATE_RECORD' : typedError instanceof multer.MulterError && typedError.code === 'LIMIT_FILE_SIZE'
-    ? 'FILE_TOO_LARGE' : typedError instanceof multer.MulterError ? 'INVALID_MULTIPART' : statusCode >= 500 ? 'INTERNAL_ERROR' : `HTTP_${statusCode}`;
+    ? 'FILE_TOO_LARGE' : typedError instanceof multer.MulterError ? 'INVALID_MULTIPART' : explicitCode ? explicitCode : statusCode >= 500 ? 'INTERNAL_ERROR' : `HTTP_${statusCode}`;
   const message = statusCode >= 500 ? 'Internal server error' : mongoCode === 11000 ? 'A record with the same unique value already exists' : invalidJson ? 'Request body contains invalid JSON' : typedError.message;
   if (statusCode >= 500) {
     recordUnhandledError();

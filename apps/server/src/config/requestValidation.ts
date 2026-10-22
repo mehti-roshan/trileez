@@ -5,8 +5,8 @@ import type { ResourceName } from '../types/entities.js';
 import type { ValueSchema } from '../middleware/validate.js';
 
 export const protectedInputFields = [
-  'organizationId', 'createdAt', 'updatedAt', 'createdBy', 'registeredBy', 'evaluatedBy', 'finalizedAt',
-  'approvedAt', 'approvedBy', 'permissionOverrides', 'permissions', 'passwordHash', 'credentialHash',
+  'organizationId', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy', 'registeredBy', 'evaluatedBy', 'finalizedAt',
+  'approvedAt', 'approvedBy', 'reviewedAt', 'reviewedBy', 'reviewReason', 'permissionOverrides', 'permissions', 'passwordHash', 'credentialHash',
 ] as const;
 
 const text = v.string({ max: 10_000 });
@@ -58,7 +58,8 @@ export const dedicatedMutationSchemas: Partial<Record<ResourceName, ReturnType<t
     plannedHours: v.number({ min: 0 }), estimatedHours: v.number({ min: 0 }), actualHours: v.number({ min: 0 }), color: shortText,
     website: shortText, instagram: shortText, telegram: shortText, about: text, goals: text, advantages: text, competitors: text,
     contactPhone: shortText, officeAddress: text, factoryAddress: text, defaultChatGroupId: v.id,
-  }, ['name']),
+    initialMembers: idList,
+  }, ['name'], ['initialMembers']),
   Task: mutations({
     id: v.id, title: v.string({ min: 1, max: 500 }), description: text, projectId: v.id,
     assigneeId: v.id, assigneeIds: idList, assigneeMemberIds: idList, followerIds: idList,

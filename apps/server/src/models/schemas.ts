@@ -519,6 +519,155 @@ ProjectAccessSchema.index({ organizationId: 1, projectId: 1, resource: 1, permis
 ProjectAccessSchema.index({ organizationId: 1, projectMemberId: 1 });
 ProjectAccessSchema.index({ organizationId: 1, expiryDate: 1 });
 
+export const AgentEnrollmentSchema = new Schema({
+  _id: stringId, organizationId, ...auditFields,
+  userId: { type: String, required: true },
+  employeeId: String,
+  installationId: { type: String, required: true },
+  deviceName: { type: String, required: true },
+  agentVersion: { type: String, required: true },
+  capabilities: { type: [String], default: [] },
+  platform: String,
+  osDescription: String,
+  status: { type: String, enum: ['active', 'disabled', 'revoked'], default: 'active' },
+  connectionStatus: { type: String, enum: ['online', 'offline'], default: 'offline' },
+  lastSeenAt: Date, enrolledAt: { type: Date, required: true }, revokedAt: Date, disabledAt: Date,
+  // Hidden from ordinary queries. Credential checks load it explicitly. Responses never include it.
+  credentialHash: { type: String, required: true, select: false },
+}, { timestamps });
+AgentEnrollmentSchema.index({ organizationId: 1, installationId: 1 }, { unique: true });
+AgentEnrollmentSchema.index({ organizationId: 1, userId: 1, status: 1 });
+
+const usageEndReason = ['shutdown', 'disabled', 'lock', 'sleep', 'logout', 'restart', 'idle', 'manual', 'stop'];
+
+export const AgentUsagePolicySchema = new Schema({
+  _id: stringId, organizationId, ...auditFields,
+  enabled: { type: Boolean, default: false },
+  employeeMayPause: { type: Boolean, default: true },
+  idleThresholdSeconds: { type: Number, default: 60, min: 30, max: 1800 },
+  retentionDays: { type: Number, default: 30, min: 7, max: 90 },
+  disabledAt: Date,
+}, { timestamps });
+
+export const AgentUsagePreferenceSchema = new Schema({
+  _id: stringId, organizationId, ...auditFields,
+  userId: { type: String, required: true },
+  paused: { type: Boolean, default: false },
+  pausedAt: Date,
+}, { timestamps });
+AgentUsagePreferenceSchema.index({ organizationId: 1, userId: 1 }, { unique: true });
+
+export const AgentUsageSessionSchema = new Schema({
+  _id: stringId, organizationId, ...auditFields,
+  userId: { type: String, required: true },
+  employeeId: String,
+  deviceId: { type: String, required: true },
+  clientSessionId: { type: String, required: true },
+  startedAt: { type: Date, required: true },
+  endedAt: Date,
+  endReason: { type: String, enum: usageEndReason },
+  status: { type: String, enum: ['open', 'closed'], default: 'open' },
+}, { timestamps });
+AgentUsageSessionSchema.index({ organizationId: 1, deviceId: 1, clientSessionId: 1 }, { unique: true });
+AgentUsageSessionSchema.index({ organizationId: 1, userId: 1, startedAt: -1 });
+
+export const AgentUsageIntervalSchema = new Schema({
+  _id: stringId, organizationId, ...auditFields,
+  userId: { type: String, required: true },
+  employeeId: String,
+  deviceId: { type: String, required: true },
+  clientSessionId: { type: String, required: true },
+  clientIntervalId: { type: String, required: true },
+  processName: { type: String, required: true },
+  displayName: String,
+  startedAt: { type: Date, required: true },
+  durationMs: { type: Number, required: true, min: 1, max: 302000 },
+}, { timestamps });
+AgentUsageIntervalSchema.index({ organizationId: 1, deviceId: 1, clientIntervalId: 1 }, { unique: true });
+AgentUsageIntervalSchema.index({ organizationId: 1, userId: 1, startedAt: -1 });
+
+export const AgentUsageStatusSchema = new Schema({
+  _id: stringId, organizationId, ...auditFields,
+  userId: { type: String, required: true },
+  deviceId: { type: String, required: true },
+  lastSuccessfulUploadAt: Date,
+  lastSampleAt: Date,
+}, { timestamps });
+AgentUsageStatusSchema.index({ organizationId: 1, deviceId: 1 }, { unique: true });
+AgentUsageStatusSchema.index({ organizationId: 1, userId: 1 });
+
+const healthCollectorPhase = ['stopped', 'running', 'offline', 'paused', 'disabled'];
+const healthSyncPhase = ['idle', 'pending', 'retrying', 'offline', 'stopped', 'revoked'];
+
+export const AgentHealthSampleSchema = new Schema({
+  _id: stringId, organizationId, ...auditFields,
+  userId: { type: String, required: true },
+  employeeId: String,
+  deviceId: { type: String, required: true },
+  clientSampleId: { type: String, required: true },
+  sampledAt: { type: Date, required: true },
+  cpuPercent: { type: Number, min: 0, max: 100 },
+  memoryUsedBytes: { type: Number, min: 0 },
+  memoryTotalBytes: { type: Number, min: 0 },
+  diskFreeBytes: { type: Number, min: 0 },
+  diskTotalBytes: { type: Number, min: 0 },
+  osName: String,
+  osVersion: String,
+  architecture: String,
+  agentVersion: { type: String, required: true },
+  online: { type: Boolean, required: true },
+  lastHeartbeatAt: Date,
+  collectorPhase: { type: String, enum: healthCollectorPhase, required: true },
+  syncPhase: { type: String, enum: healthSyncPhase, required: true },
+  queueDepth: { type: Number, min: 0, max: 10_000, required: true },
+  pendingBytes: { type: Number, min: 0, required: true },
+  fingerprint: { type: String, required: true },
+}, { timestamps });
+AgentHealthSampleSchema.index({ organizationId: 1, deviceId: 1, clientSampleId: 1 }, { unique: true });
+AgentHealthSampleSchema.index({ organizationId: 1, deviceId: 1, sampledAt: -1 });
+
+export const AgentHealthStatusSchema = new Schema({
+  _id: stringId, organizationId, ...auditFields,
+  userId: { type: String, required: true },
+  deviceId: { type: String, required: true },
+  lastSuccessfulUploadAt: Date,
+  lastSampleAt: Date,
+}, { timestamps });
+AgentHealthStatusSchema.index({ organizationId: 1, deviceId: 1 }, { unique: true });
+
+const screenState = ['requested', 'active', 'ended'];
+const screenEndReason = ['employee_stop', 'rejected', 'shutdown', 'agent_lost', 'support_end', 'timeout'];
+
+export const AgentScreenSessionSchema = new Schema({
+  _id: stringId, organizationId, ...auditFields,
+  deviceId: { type: String, required: true },
+  userId: { type: String, required: true },
+  employeeId: String,
+  supportUserId: { type: String, required: true },
+  state: { type: String, enum: screenState, required: true },
+  requestedAt: { type: Date, required: true },
+  startedAt: Date,
+  endedAt: Date,
+  endReason: { type: String, enum: screenEndReason },
+  expiresAt: { type: Date, required: true },
+  lastAgentAt: Date,
+  requestNote: String,
+  frameCount: { type: Number, min: 0, default: 0 },
+  qualityMode: { type: String, enum: ['assistance', 'high'], default: 'assistance' },
+  maxFps: { type: Number, min: 1, max: 30, default: 2 },
+  maxEdge: { type: Number, min: 640, max: 1920, default: 1280 },
+  jpegQuality: { type: Number, min: 30, max: 85, default: 60 },
+  controlState: { type: String, enum: ['off', 'requested', 'granted', 'denied', 'revoked', 'expired'], default: 'off' },
+  controlGrantId: String,
+  controlRequestedAt: Date,
+  controlGrantedAt: Date,
+  controlExpiresAt: Date,
+  controlEndedAt: Date,
+  controlEndReason: { type: String, enum: ['employee_revoke', 'support_revoke', 'denied', 'expired', 'session_ended', 'capability_lost'] },
+  permittedCapabilities: { type: [String], default: [] },
+}, { timestamps });
+AgentScreenSessionSchema.index({ organizationId: 1, deviceId: 1, requestedAt: -1 });
+
 export const schemas = {
   User: UserSchema, Employee: EmployeeSchema, Project: ProjectSchema, ProjectPhase: ProjectPhaseSchema,
   ProjectRole: ProjectRoleSchema, ProjectActivity: ProjectActivitySchema, ProjectMember: ProjectMemberSchema,
@@ -528,7 +677,11 @@ export const schemas = {
   Invoice: InvoiceSchema, Payment: PaymentSchema, Installment: InstallmentSchema, Expense: ExpenseSchema,
   BankAccount: BankAccountSchema, Supplier: SupplierSchema, ProjectSale: ProjectSaleSchema, PayrollRecord: PayrollRecordSchema, PayrollAdjustment: PayrollAdjustmentSchema,
   PayrollPayment: PayrollPaymentSchema, PayrollPaymentDocument: PayrollPaymentDocumentSchema,
-  EmployeeContract: EmployeeContractSchema, ProjectAccess: ProjectAccessSchema,
+  EmployeeContract: EmployeeContractSchema, ProjectAccess: ProjectAccessSchema, AgentEnrollment: AgentEnrollmentSchema,
+  AgentUsagePolicy: AgentUsagePolicySchema, AgentUsagePreference: AgentUsagePreferenceSchema, AgentUsageSession: AgentUsageSessionSchema,
+  AgentUsageInterval: AgentUsageIntervalSchema, AgentUsageStatus: AgentUsageStatusSchema,
+  AgentHealthSample: AgentHealthSampleSchema, AgentHealthStatus: AgentHealthStatusSchema,
+  AgentScreenSession: AgentScreenSessionSchema,
   AuthSession: AuthSessionSchema, PasswordResetToken: PasswordResetTokenSchema,
   BackgroundJob: BackgroundJobSchema, RecurringTask: RecurringTaskSchema,
 };

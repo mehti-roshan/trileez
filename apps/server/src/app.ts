@@ -24,6 +24,11 @@ import { runtimeState } from './observability/runtimeState.js';
 import { mongoReadiness } from './db/mongo.js';
 import chatRoutes from './routes/chat.js';
 import notificationRoutes from './routes/notifications.js';
+import employeeSelfRoutes from './routes/employeeSelf.js';
+import agentDeviceEmployeeRoutes, { agentDeviceManagementRoutes } from './routes/agentDevices.js';
+import applicationUsageEmployeeRoutes, { applicationUsageManagementRoutes } from './routes/applicationUsage.js';
+import deviceHealthEmployeeRoutes, { deviceHealthManagementRoutes } from './routes/deviceHealth.js';
+import screenShareEmployeeRoutes, { screenShareManagementRoutes } from './routes/screenShare.js';
 
 async function readiness() {
   const started = process.hrtime.bigint();
@@ -64,6 +69,15 @@ export function createApp(): Express {
   });
 
   app.use('/api/auth', authRoutes);
+  app.use('/api/me', employeeSelfRoutes);
+  app.use('/api/me', agentDeviceEmployeeRoutes);
+  app.use('/api/me', applicationUsageEmployeeRoutes);
+  app.use('/api/me', deviceHealthEmployeeRoutes);
+  app.use('/api/me', screenShareEmployeeRoutes);
+  app.use('/api/agent-devices', agentDeviceManagementRoutes);
+  app.use('/api/agent-usage', applicationUsageManagementRoutes);
+  app.use('/api/agent-health', deviceHealthManagementRoutes);
+  app.use('/api', screenShareManagementRoutes);
   app.use('/api/audit', auditRoutes);
   app.use('/api/jobs', jobRoutes);
   app.use('/api/users', userRoutes);

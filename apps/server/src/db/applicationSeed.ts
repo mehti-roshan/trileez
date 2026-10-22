@@ -196,10 +196,13 @@ export async function seedApplicationData(): Promise<Record<string, number>> {
   const tasks = new Map<string, string>();
   for (const [key, projectKey, title, assigneeKey, phaseKey, status, estimatedHours] of taskDefinitions) {
     const projectId = project(projectKey);
+    const managerKey = projectDefinitions.find((item) => item[0] === projectKey)?.[4];
+    const activityRole = assigneeKey === managerKey ? 'manager' : 'delivery';
+    const discovery = phaseKey === 'discovery';
     const document = await upsertModel('Task', { projectId, title }, {
-      title, description: `وظیفه متصل به پروژه ${projectKey}`, projectId, phaseId: phases.get(`${projectKey}:${phaseKey}`), activityId: activities.get(`${projectKey}:delivery`),
+      title, description: `وظیفه متصل به پروژه ${projectKey}`, projectId, phaseId: phases.get(`${projectKey}:${phaseKey}`), activityId: activities.get(`${projectKey}:${activityRole}`),
       assigneeId: user(assigneeKey), assigneeIds: [user(assigneeKey)], assigneeMemberIds: [members.get(`${projectKey}:${assigneeKey}`)], followerIds: [user('pm')], creatorId: user('pm'),
-      status, priority: status === 'todo' ? 'medium' : 'high', startDate: date('2026-09-01'), dueDate: date('2026-10-20'), estimatedHours, loggedHours: status === 'done' ? estimatedHours : Math.round(estimatedHours * .45),
+      status, priority: status === 'todo' ? 'medium' : 'high', startDate: date(discovery ? '2026-03-10' : '2026-09-01'), dueDate: date(discovery ? '2026-04-20' : '2026-10-20'), estimatedHours, loggedHours: status === 'done' ? estimatedHours : Math.round(estimatedHours * .45),
       hourlyRate: 450_000, customerVisible: true, attachments: [], tags: ['seed', phaseKey], labelIds: ['seed-label-important'], createdBy: user('pm'), updatedBy: user('pm'),
     });
     tasks.set(key, idOf(document));

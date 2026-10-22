@@ -15,6 +15,7 @@ import {
   revokeSession, rotateRefreshToken, writeAuthAudit,
 } from '../services/auth.js';
 import { logSecurityEvent, securityPrincipal } from '../observability/security.js';
+import { linkedEmployee, associationOf } from '../services/employeeIdentity.js';
 
 const router = Router();
 const refreshCookieName = 'trivix_refresh';
@@ -185,5 +186,11 @@ router.post('/password-reset/confirm', validateRequest({ body: passwordResetConf
   } catch (error) { logSecurityEvent('auth.password_reset_confirmation_failed'); next(error); }
 });
 
-router.get('/me', requireAuth, (req, res) => res.json({ user: publicUser(req.user!) }));
+router.get('/me', requireAuth, async (req, res, next) => {
+  try {
+    const employee = await linkedEmployee(req.user!.organizationId, req.user!.id);
+    const association = associationOf(employee);
+    res.json({ user: { ...publicUser(req.user!), employeeId: association.employeeId }, employee: association });
+  } catch (error) { next(error); }
+});
 export default router;

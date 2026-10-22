@@ -4,6 +4,7 @@ import type { AppRecord, RecordInput, ResourceName } from '../types/entities.js'
 import { createAutomaticProjectEvent } from './collaborationDomain.js';
 import { auditService } from './audit.js';
 import { assertAttachableFile } from './fileAccess.js';
+import { claimOwnTimeEntry } from './employeeIdentity.js';
 
 const countedTimeStatuses = new Set(['approved', 'pending_review', 'review_again']);
 
@@ -11,10 +12,27 @@ function invalid(path: string, message: string): never { throw relationshipIssue
 function businessIssue(path: string, message: string): never {
   throw new RequestValidationError([{ location: 'relationship', path, code: 'invalid_relationship', message }]);
 }
+const SCHEDULE_TIME_ZONE = 'Asia/Tehran';
+
+/** Calendar day in the schedule timezone. A date-only string is that civil day, not a UTC instant. */
+function calendarDay(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) return value.trim();
+  const parsed = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  return new Intl.DateTimeFormat('en-CA', { timeZone: SCHEDULE_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(parsed);
+}
+
 function dateValue(value: unknown): number | undefined {
-  if (!value) return undefined;
-  const result = Date.parse(String(value));
-  return Number.isNaN(result) ? undefined : result;
+  const day = calendarDay(value);
+  if (!day) return undefined;
+  const [year, month, date] = day.split('-').map(Number);
+  if (!year || !month || !date) return undefined;
+  return year * 10_000 + month * 100 + date;
+}
+
+function affects(changed: ReadonlySet<string> | undefined, fields: readonly string[]): boolean {
+  return !changed || fields.some((field) => changed.has(field));
 }
 function unique(values: unknown[]): string[] { return [...new Set(values.filter(Boolean).map(String))]; }
 
@@ -136,22 +154,24 @@ async function validateActivity(organizationId: string, input: Record<string, un
   }
 }
 
-async function validateTask(organizationId: string, actorId: string, input: Record<string, unknown>): Promise<void> {
+async function validateTask(organizationId: string, actorId: string, input: Record<string, unknown>, changed?: ReadonlySet<string>): Promise<void> {
   const db = database.forOrganization(organizationId);
   const projectId = String(input.projectId);
   const project = await requireProject(organizationId, projectId);
+  const checkAssignment = affects(changed, ['phaseId', 'activityId', 'assigneeId', 'assigneeIds', 'assigneeMemberIds']);
+  const checkDates = affects(changed, ['startDate', 'dueDate', 'phaseId']);
   let phase: AppRecord | undefined;
-  if (input.phaseId) {
+  if (input.phaseId && (checkDates || affects(changed, ['phaseId']))) {
     phase = await db.get('ProjectPhase', String(input.phaseId));
     if (!phase || phase.projectId !== projectId) invalid('body.phaseId', 'Task phase must belong to the task project');
   }
   let activity: AppRecord | undefined;
-  if (input.activityId) {
+  if (checkAssignment && input.activityId) {
     activity = await db.get('ProjectActivity', String(input.activityId));
     if (!activity || activity.projectId !== projectId) invalid('body.activityId', 'Task activity must belong to the task project');
   }
-  const memberIds = unique(Array.isArray(input.assigneeMemberIds) ? input.assigneeMemberIds : []);
-  const people = unique([input.assigneeId, ...(Array.isArray(input.assigneeIds) ? input.assigneeIds : [])]);
+  const memberIds = checkAssignment ? unique(Array.isArray(input.assigneeMemberIds) ? input.assigneeMemberIds : []) : [];
+  const people = checkAssignment ? unique([input.assigneeId, ...(Array.isArray(input.assigneeIds) ? input.assigneeIds : [])]) : [];
   const members: AppRecord[] = [];
   for (const memberId of memberIds) {
     const member = await db.get('ProjectMember', memberId);
@@ -168,13 +188,15 @@ async function validateTask(organizationId: string, actorId: string, input: Reco
       invalid('body.activityId', 'Assigned members must hold the role that owns this activity');
     }
   }
-  const start = dateValue(input.startDate); const due = dateValue(input.dueDate);
-  if (start !== undefined && due !== undefined && due < start) businessIssue('body.dueDate', 'Task due date must not precede its start date');
-  const lowerBound = dateValue(phase?.startDate) ?? dateValue(project.startDate);
-  const upperBound = dateValue(phase?.endDate) ?? dateValue(project.endDate);
-  if (start !== undefined && lowerBound !== undefined && start < lowerBound) businessIssue('body.startDate', 'Task starts before its phase or project');
-  if (due !== undefined && upperBound !== undefined && due > upperBound) businessIssue('body.dueDate', 'Task ends after its phase or project');
-  if (Array.isArray(input.attachments)) for (const attachmentId of unique(input.attachments)) {
+  if (checkDates) {
+    const start = dateValue(input.startDate); const due = dateValue(input.dueDate);
+    if (start !== undefined && due !== undefined && due < start) businessIssue('body.dueDate', 'Task due date must not precede its start date');
+    const lowerBound = dateValue(phase?.startDate) ?? dateValue(project.startDate);
+    const upperBound = dateValue(phase?.endDate) ?? dateValue(project.endDate);
+    if (start !== undefined && lowerBound !== undefined && start < lowerBound) businessIssue('body.startDate', 'Task starts before its phase or project');
+    if (due !== undefined && upperBound !== undefined && due > upperBound) businessIssue('body.dueDate', 'Task ends after its phase or project');
+  }
+  if (affects(changed, ['attachments']) && Array.isArray(input.attachments)) for (const attachmentId of unique(input.attachments)) {
     await assertAttachableFile(organizationId, actorId, attachmentId, 'body.attachments', {
       projectId, ...(typeof project.customerId === 'string' ? { customerId: project.customerId } : {}), customerVisible: input.customerVisible === true,
     });
@@ -205,6 +227,67 @@ async function validateTimeEntry(organizationId: string, input: Record<string, u
 async function syncProjectMembers(organizationId: string, projectId: string): Promise<void> {
   const active = (await database.forOrganization(organizationId).list('ProjectMember', { projectId })).filter((member) => member.status === 'active');
   await database.forOrganization(organizationId).update('Project', projectId, { members: unique(active.map((member) => member.personId)) });
+}
+
+/** Linked user id when the employee has an account; otherwise the employee id. User-only members stay on their user id. */
+async function canonicalPersonId(organizationId: string, personId: string): Promise<string> {
+  const employee = await employeeForPerson(organizationId, personId);
+  if (typeof employee?.userId === 'string' && employee.userId) return employee.userId;
+  return employee?.id ?? personId;
+}
+
+/** Rewrite assignee ids to one stable id per person and align membership ids. Invalid ids are kept so validation still rejects them. */
+async function normalizeTaskAssignment(organizationId: string, input: Record<string, unknown>): Promise<void> {
+  const projectId = String(input.projectId ?? '');
+  if (!projectId) return;
+  const db = database.forOrganization(organizationId);
+  const source = unique([input.assigneeId, ...(Array.isArray(input.assigneeIds) ? input.assigneeIds : [])]);
+  const explicitMembers = unique(Array.isArray(input.assigneeMemberIds) ? input.assigneeMemberIds : []);
+  if (!source.length && !explicitMembers.length) return;
+  const canonicalIds: string[] = [];
+  const memberIds: string[] = [];
+  const seenPeople = new Set<string>();
+  const remember = async (personId: string, member?: AppRecord) => {
+    const canonical = await canonicalPersonId(organizationId, personId);
+    if (!seenPeople.has(canonical)) {
+      seenPeople.add(canonical);
+      canonicalIds.push(canonical);
+    }
+    if (member && member.projectId === projectId && member.status === 'active' && !memberIds.includes(member.id)) memberIds.push(member.id);
+  };
+  for (const personId of source) {
+    const member = await activeMemberForPerson(organizationId, projectId, personId);
+    await remember(member ? String(member.personId) : personId, member);
+  }
+  for (const memberId of explicitMembers) {
+    const member = await db.get('ProjectMember', memberId);
+    if (!member || member.projectId !== projectId || member.status !== 'active') {
+      if (!memberIds.includes(memberId)) memberIds.push(memberId);
+      continue;
+    }
+    await remember(String(member.personId), member);
+  }
+  const fallback = canonicalIds[0];
+  if (fallback) {
+    const primary = input.assigneeId ? await canonicalPersonId(organizationId, String(input.assigneeId)) : fallback;
+    const ordered = canonicalIds.includes(primary) ? [primary, ...canonicalIds.filter((id) => id !== primary)] : canonicalIds;
+    input.assigneeId = ordered[0];
+    input.assigneeIds = ordered;
+  }
+  if (memberIds.length || explicitMembers.length) input.assigneeMemberIds = memberIds;
+}
+
+/** Mock and single-document stores have no multi-document transaction. Remove the new project graph before the error reaches the client. */
+async function rollbackProjectCreate(organizationId: string, projectId: string | undefined, memberIds: readonly string[], eventIds: readonly string[]): Promise<void> {
+  const db = database.forOrganization(organizationId);
+  for (const eventId of [...eventIds].reverse()) {
+    try { await db.remove('ProjectEvent', eventId); } catch (rollbackError) { void rollbackError; }
+  }
+  for (const memberId of [...memberIds].reverse()) {
+    try { await db.remove('ProjectMember', memberId); } catch (rollbackError) { void rollbackError; }
+  }
+  if (!projectId) return;
+  try { await db.remove('Project', projectId); } catch (rollbackError) { void rollbackError; }
 }
 
 export async function recalculateProject(organizationId: string, projectId: string): Promise<void> {
@@ -241,12 +324,50 @@ const kindModel: Record<Kind, ResourceName> = { phase: 'ProjectPhase', role: 'Pr
 export class ProjectDomainService {
   async createProject(organizationId: string, actorId: string, input: RecordInput, ip?: string): Promise<AppRecord> {
     const db = database.forOrganization(organizationId);
-    if (input.customerId && !await db.get('Customer', String(input.customerId))) invalid('body.customerId', 'Project customer does not exist in this organization');
-    if (input.managerId) await requirePerson(organizationId, String(input.managerId), 'body.managerId');
-    if (input.code && (await db.list('Project', { code: input.code })).length) businessIssue('body.code', 'Project code is already in use');
-    await validateDateRange(input, 'body.endDate');
-    const data = await db.create('Project', { ...input, progress: 0, tasksCount: 0, completedTasksCount: 0, plannedHours: 0, estimatedHours: 0, actualHours: 0, members: [], createdBy: actorId });
-    await audit(organizationId, actorId, 'projects.created', 'Project', data.id, Object.keys(input), ip, undefined, data); return data;
+    const { initialMembers, members: _members, ...projectInput } = input;
+    if (projectInput.customerId && !await db.get('Customer', String(projectInput.customerId))) invalid('body.customerId', 'Project customer does not exist in this organization');
+    if (projectInput.managerId) await requirePerson(organizationId, String(projectInput.managerId), 'body.managerId');
+    if (projectInput.code && (await db.list('Project', { code: projectInput.code })).length) businessIssue('body.code', 'Project code is already in use');
+    await validateDateRange(projectInput, 'body.endDate');
+    const requestedMembers = unique(Array.isArray(initialMembers) ? initialMembers : []);
+    let projectId: string | undefined;
+    const createdMemberIds: string[] = [];
+    const createdEventIds: string[] = [];
+    try {
+      const data = await db.create('Project', { ...projectInput, progress: 0, tasksCount: 0, completedTasksCount: 0, plannedHours: 0, estimatedHours: 0, actualHours: 0, members: [], createdBy: actorId });
+      projectId = data.id;
+      const seen = new Set<string>();
+      const joinedAt = calendarDay(projectInput.startDate) ?? calendarDay(new Date()) ?? new Date().toISOString().slice(0, 10);
+      for (const requestedId of requestedMembers) {
+        const employee = await employeeForPerson(organizationId, requestedId);
+        if (!employee) invalid('body.initialMembers', 'Selected project member is not an employee in this organization');
+        if (employee.employmentStatus !== 'active') invalid('body.initialMembers', 'Only active employees can be added as initial project members');
+        const personId = await canonicalPersonId(organizationId, employee.id);
+        const aliases = await personAliases(organizationId, personId);
+        if ([...seen].some((existing) => aliases.has(existing))) continue;
+        seen.add(personId);
+        const memberInput: RecordInput = { projectId: data.id, personId, status: 'active', joinedAt, createdBy: actorId };
+        await validateMember(organizationId, memberInput);
+        const member = await db.create('ProjectMember', memberInput);
+        createdMemberIds.push(member.id);
+      }
+      if (createdMemberIds.length) await syncProjectMembers(organizationId, data.id);
+      for (const memberId of createdMemberIds) {
+        const member = await db.get('ProjectMember', memberId);
+        if (!member) continue;
+        const event = await createAutomaticProjectEvent(organizationId, actorId, {
+          projectId: data.id, projectMemberId: member.id, personId: String(member.personId), eventType: 'عضویت کارمند در پروژه',
+          title: 'عضو جدید به پروژه پیوست', description: `عضو ${String(member.personId)} به پروژه اضافه شد.`, systemKey: `member:${member.id}:joined`,
+        }, ip);
+        createdEventIds.push(event.id);
+      }
+      const stored = (await db.get('Project', data.id)) ?? data;
+      await audit(organizationId, actorId, 'projects.created', 'Project', data.id, Object.keys(projectInput), ip, undefined, stored);
+      return stored;
+    } catch (error) {
+      await rollbackProjectCreate(organizationId, projectId, createdMemberIds, createdEventIds);
+      throw error;
+    }
   }
   async updateProject(organizationId: string, actorId: string, id: string, patch: Record<string, unknown>, ip?: string): Promise<AppRecord | undefined> {
     const db = database.forOrganization(organizationId); const current = await db.get('Project', id); if (!current) return undefined;
@@ -279,7 +400,9 @@ export class ProjectDomainService {
   }
   async createTask(organizationId: string, actorId: string, input: RecordInput, ip?: string): Promise<AppRecord> {
     const { loggedHours: _loggedHours, ...mutable } = input;
-    const prepared = { ...mutable, creatorId: actorId, loggedHours: 0, createdBy: actorId }; await validateTask(organizationId, actorId, prepared);
+    const prepared = { ...mutable, creatorId: actorId, loggedHours: 0, createdBy: actorId };
+    await normalizeTaskAssignment(organizationId, prepared);
+    await validateTask(organizationId, actorId, prepared);
     const data = await database.forOrganization(organizationId).create('Task', prepared); await recalculateProject(organizationId, String(data.projectId));
     const result = (await database.forOrganization(organizationId).get('Task', data.id))!;
     await audit(organizationId, actorId, 'tasks.created', 'Task', data.id, Object.keys(input), ip, undefined, result); return result;
@@ -288,7 +411,13 @@ export class ProjectDomainService {
     const db = database.forOrganization(organizationId); const current = await db.get('Task', id); if (!current) return undefined;
     const previousStatus = current.status;
     const { loggedHours: _loggedHours, ...safePatch } = patch;
-    await validateTask(organizationId, actorId, { ...current, ...safePatch }); const data = await db.update('Task', id, { ...safePatch, updatedBy: actorId });
+    const assignmentFields = ['assigneeId', 'assigneeIds', 'assigneeMemberIds'] as const;
+    if (assignmentFields.some((field) => field in safePatch)) {
+      const draft: Record<string, unknown> = { ...current, ...safePatch };
+      await normalizeTaskAssignment(organizationId, draft);
+      for (const field of assignmentFields) if (draft[field] !== undefined) safePatch[field] = draft[field];
+    }
+    await validateTask(organizationId, actorId, { ...current, ...safePatch }, new Set(Object.keys(safePatch))); const data = await db.update('Task', id, { ...safePatch, updatedBy: actorId });
     await recalculateProject(organizationId, String(current.projectId));
     if (data) {
       await audit(organizationId, actorId, 'tasks.updated', 'Task', id, Object.keys(patch), ip, current, data);
@@ -317,6 +446,7 @@ export class ProjectDomainService {
     if (kind === 'activity') await validateActivity(organizationId, prepared);
     if (kind === 'member') { if (!prepared.status) prepared.status = 'active'; await validateMember(organizationId, prepared); }
     if (kind === 'timeEntry') {
+      await claimOwnTimeEntry(organizationId, actorId, prepared);
       delete prepared.status; delete prepared.hourlyRate; delete prepared.calculatedCost; delete prepared.billingStatus;
       const member = await validateTimeEntry(organizationId, prepared); const employee = await employeeForPerson(organizationId, String(prepared.employeeId));
       prepared.employeeId = employee!.id;

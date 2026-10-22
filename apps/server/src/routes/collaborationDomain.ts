@@ -4,6 +4,7 @@ import { requireAuth, requireResourceAccess } from '../middleware/auth.js';
 import { validateRequest } from '../middleware/validate.js';
 import { CollaborationDomainService } from '../services/collaborationDomain.js';
 import { meetingListConfig, meetingListQuerySchema, projectEventListConfig, projectEventListQuerySchema } from '../config/listQueries.js';
+import { memberMeetingScope } from '../services/employeeIdentity.js';
 import { pageQuery } from '../db/query.js';
 import { database } from '../db/database.js';
 
@@ -11,8 +12,22 @@ const service = new CollaborationDomainService();
 
 export const meetingRoutes = Router();
 const meetingSchemas = dedicatedMutationSchemas.Meeting!;
-meetingRoutes.get('/', requireAuth, requireResourceAccess('meetings', 'read'), validateRequest({ query: meetingListQuerySchema }), async (req, res, next) => { try { res.json(await database.forOrganization(req.user!.organizationId).page('Meeting', pageQuery(req.validatedQuery || {}, meetingListConfig, 'meetings'))); } catch (error) { next(error); } });
-meetingRoutes.get('/:id', requireAuth, requireResourceAccess('meetings', 'read'), validateRequest({ params: idParamsSchema }), async (req, res, next) => { try { const data = await service.getMeeting(req.user!.organizationId, req.params.id as string); if (!data) return res.status(404).json({ error: 'Meeting not found' }); res.json({ data }); } catch (error) { next(error); } });
+meetingRoutes.get('/', requireAuth, requireResourceAccess('meetings', 'read'), validateRequest({ query: meetingListQuerySchema }), async (req, res, next) => {
+  try {
+    const options = pageQuery(req.validatedQuery || {}, meetingListConfig, 'meetings');
+    const scope = await memberMeetingScope(req.user!.organizationId, req.user!.id, req.user!.role);
+    if (scope) { options.accessFilter = scope.accessFilter; options.accessPredicate = scope.accessPredicate; }
+    res.json(await database.forOrganization(req.user!.organizationId).page('Meeting', options));
+  } catch (error) { next(error); }
+});
+meetingRoutes.get('/:id', requireAuth, requireResourceAccess('meetings', 'read'), validateRequest({ params: idParamsSchema }), async (req, res, next) => {
+  try {
+    const data = await service.getMeeting(req.user!.organizationId, req.params.id as string);
+    const scope = await memberMeetingScope(req.user!.organizationId, req.user!.id, req.user!.role);
+    if (!data || (scope && !scope.accessPredicate(data))) return res.status(404).json({ error: 'Meeting not found' });
+    res.json({ data });
+  } catch (error) { next(error); }
+});
 meetingRoutes.post('/', requireAuth, requireResourceAccess('meetings', 'create'), validateRequest({ body: meetingSchemas.create }), async (req, res, next) => { try { res.status(201).json({ data: await service.createMeeting(req.user!.organizationId, req.user!.id, req.body, req.ip) }); } catch (error) { next(error); } });
 meetingRoutes.patch('/:id', requireAuth, requireResourceAccess('meetings', 'update'), validateRequest({ params: idParamsSchema, body: meetingSchemas.update }), async (req, res, next) => { try { const data = await service.updateMeeting(req.user!.organizationId, req.user!.id, req.params.id as string, req.body, req.ip); if (!data) return res.status(404).json({ error: 'Meeting not found' }); res.json({ data }); } catch (error) { next(error); } });
 meetingRoutes.delete('/:id', requireAuth, requireResourceAccess('meetings', 'delete'), validateRequest({ params: idParamsSchema }), async (req, res, next) => { try { if (!await service.removeMeeting(req.user!.organizationId, req.user!.id, req.params.id as string, req.ip)) return res.status(404).json({ error: 'Meeting not found' }); res.status(204).send(); } catch (error) { next(error); } });

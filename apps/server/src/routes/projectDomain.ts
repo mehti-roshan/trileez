@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { Request } from 'express';
 import { requireAuth, requireResourceAccess } from '../middleware/auth.js';
 import { validateRequest, v } from '../middleware/validate.js';
 import { dedicatedMutationSchemas, idParamsSchema } from '../config/requestValidation.js';
@@ -8,6 +9,9 @@ import { ProjectDomainService, recalculateProject } from '../services/projectDom
 import type { ResourceAccessName } from '../config/resourceAccess.js';
 import type { ValueSchema } from '../middleware/validate.js';
 import { listQuerySchema, pageQuery } from '../db/query.js';
+import type { DatabasePageOptions } from '../db/query.js';
+import { memberRecordScope } from '../services/employeeIdentity.js';
+import type { OwnerScope } from '../services/employeeIdentity.js';
 import { projectListConfig, projectListQuerySchema, taskListConfig, taskListQuerySchema } from '../config/listQueries.js';
 import type { ListQueryConfig } from '../db/query.js';
 import type { ResourceName } from '../types/entities.js';
@@ -46,11 +50,29 @@ const domainList: Record<DomainKind, { model: ResourceName; config: ListQueryCon
   member: { model: 'ProjectMember', config: { filters: { projectId: optionalId, personId: optionalId, status: optionalShort }, ranges: { joinedFrom: { field: 'joinedAt', bound: 'gte' }, joinedTo: { field: 'joinedAt', bound: 'lte' } }, sortFields: ['createdAt', 'joinedAt'] } },
   timeEntry: { model: 'TimeEntry', config: { filters: { projectId: optionalId, taskId: optionalId, employeeId: optionalId, status: optionalShort }, ranges: { from: { field: 'date', bound: 'gte' }, to: { field: 'date', bound: 'lte' } }, searchFields: ['description'], sortFields: ['date', 'createdAt', 'hours'], defaultSort: 'date' } },
 };
-function relationRouter(kind: DomainKind, resource: ResourceAccessName, schemas: DomainSchemas): Router {
+function applyScope(options: DatabasePageOptions, scope: OwnerScope | undefined): DatabasePageOptions {
+  if (!scope) return options;
+  options.accessFilter = scope.accessFilter;
+  options.accessPredicate = scope.accessPredicate;
+  return options;
+}
+function relationRouter(kind: DomainKind, resource: ResourceAccessName, schemas: DomainSchemas, ownScope?: (req: Request) => Promise<OwnerScope | undefined>): Router {
   const router = Router();
   const list = domainList[kind];
-  router.get('/', requireAuth, requireResourceAccess(resource, 'read'), validateRequest({ query: listQuerySchema(list.config) }), async (req, res, next) => { try { res.json(await database.forOrganization(req.user!.organizationId).page(list.model, pageQuery(req.validatedQuery || {}, list.config, resource))); } catch (error) { next(error); } });
-  router.get('/:id', requireAuth, requireResourceAccess(resource, 'read'), validateRequest({ params: idParamsSchema }), async (req, res, next) => { try { const data = await service.get(req.user!.organizationId, kind, req.params.id as string); if (!data) return res.status(404).json({ error: 'Record not found' }); res.json({ data }); } catch (error) { next(error); } });
+  router.get('/', requireAuth, requireResourceAccess(resource, 'read'), validateRequest({ query: listQuerySchema(list.config) }), async (req, res, next) => {
+    try {
+      const options = applyScope(pageQuery(req.validatedQuery || {}, list.config, resource), ownScope ? await ownScope(req) : undefined);
+      res.json(await database.forOrganization(req.user!.organizationId).page(list.model, options));
+    } catch (error) { next(error); }
+  });
+  router.get('/:id', requireAuth, requireResourceAccess(resource, 'read'), validateRequest({ params: idParamsSchema }), async (req, res, next) => {
+    try {
+      const data = await service.get(req.user!.organizationId, kind, req.params.id as string);
+      const scope = ownScope ? await ownScope(req) : undefined;
+      if (!data || (scope && !scope.accessPredicate(data))) return res.status(404).json({ error: 'Record not found' });
+      res.json({ data });
+    } catch (error) { next(error); }
+  });
   router.post('/bulk', requireAuth, requireResourceAccess(resource, 'create'), validateRequest({ body: schemas.bulk }), async (req, res, next) => { try { const data = []; for (const item of req.body.items) data.push(await service.create(req.user!.organizationId, req.user!.id, kind, item, req.ip)); res.status(201).json({ data }); } catch (error) { next(error); } });
   router.post('/', requireAuth, requireResourceAccess(resource, 'create'), validateRequest({ body: schemas.create }), async (req, res, next) => { try { res.status(201).json({ data: await service.create(req.user!.organizationId, req.user!.id, kind, req.body, req.ip) }); } catch (error) { next(error); } });
   router.patch('/:id', requireAuth, requireResourceAccess(resource, 'update'), validateRequest({ params: idParamsSchema, body: schemas.update }), async (req, res, next) => { try { const data = await service.update(req.user!.organizationId, req.user!.id, kind, req.params.id as string, req.body, req.ip); if (!data) return res.status(404).json({ error: 'Record not found' }); res.json({ data }); } catch (error) { next(error); } });
@@ -58,7 +80,7 @@ function relationRouter(kind: DomainKind, resource: ResourceAccessName, schemas:
   return router;
 }
 
-const timesheetRoutes = relationRouter('timeEntry', 'timesheets', timeEntrySchemas);
+const timesheetRoutes = relationRouter('timeEntry', 'timesheets', timeEntrySchemas, (req) => memberRecordScope(req.user!.organizationId, req.user!.id, req.user!.role));
 timesheetRoutes.patch('/:id/review', requireAuth, requireResourceAccess('timesheets', 'update'), validateRequest({ params: idParamsSchema, body: timeEntryReviewSchema }), async (req, res, next) => {
   try { const data = await service.reviewTimeEntry(req.user!.organizationId, req.user!.id, req.params.id as string, req.body, req.ip); if (!data) return res.status(404).json({ error: 'Time entry not found' }); res.json({ data }); } catch (error) { next(error); }
 });
