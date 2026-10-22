@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12</LangVersion>
+    <RootNamespace>Trilez.Agent.AvaloniaApp</RootNamespace>
+    <AssemblyName>Trilez.Agent.Avalonia</AssemblyName>
+    <Version>0.2.0</Version>
+    <AssemblyVersion>0.2.0.0</AssemblyVersion>
+    <FileVersion>0.2.0.0</FileVersion>
+    <InformationalVersion>0.2.0</InformationalVersion>
+    <Product>Trilez Agent</Product>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <IsWindowsAgent>false</IsWindowsAgent>
+    <IsWindowsAgent Condition="$([MSBuild]::IsOSPlatform('Windows'))">true</IsWindowsAgent>
+    <IsWindowsAgent Condition="'$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.StartsWith('win'))">true</IsWindowsAgent>
+    <DefineConstants Condition="'$(IsWindowsAgent)' == 'true'">$(DefineConstants);WINDOWS_AGENT</DefineConstants>
+    <NoWarn Condition="'$(IsWindowsAgent)' == 'true'">$(NoWarn);CA1416</NoWarn>
+    <Description>Cross-platform Avalonia employee desktop. Linux builds omit Windows capture and DPAPI. The WPF project remains until this shell is verified on Windows.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Trilez.Agent.Presentation\Trilez.Agent.Presentation.csproj" />
+    <PackageReference Include="Avalonia" Version="11.2.5" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.2.5" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.5" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.5" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(IsWindowsAgent)' == 'true'">
+    <Compile Include="..\Trilez.Agent.Desktop\WindowsHealthProbe.cs" Link="Platform\Windows\WindowsHealthProbe.cs" />
+    <Compile Include="..\Trilez.Agent.Desktop\WindowsForegroundProbe.cs" Link="Platform\Windows\WindowsForegroundProbe.cs" />
+    <Compile Include="..\Trilez.Agent.Desktop\WindowsUsageSignals.cs" Link="Platform\Windows\WindowsUsageSignals.cs" />
+    <Compile Include="..\Trilez.Agent.Desktop\WindowsScreenCapturer.cs" Link="Platform\Windows\WindowsScreenCapturer.cs" />
+    <Compile Include="..\Trilez.Agent.Desktop\WindowsUserStartupRegistration.cs" Link="Platform\Windows\WindowsUserStartupRegistration.cs" />
+    <Compile Include="..\Trilez.Agent.Desktop\DpapiDeviceSecretProtector.cs" Link="Platform\Windows\DpapiDeviceSecretProtector.cs" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Win32.SystemEvents" Version="8.0.0" />
+  </ItemGroup>
+</Project>

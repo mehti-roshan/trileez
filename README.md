@@ -130,3 +130,17 @@ npm run build
 ```
 
 See [apps/server/README.md](apps/server/README.md) for the API route overview.
+
+## Employee desktop agent
+
+The cross-platform employee desktop lives in [apps/agent](apps/agent). On Linux, restore, build, test, and run it with:
+
+```bash
+cd apps/agent
+export DOTNET="${DOTNET:-$HOME/.dotnet/dotnet}"
+export DOTNET_ROOT="${DOTNET_ROOT:-$HOME/.dotnet}"
+./scripts/linux/dev.sh all
+./scripts/linux/dev.sh run
+```
+
+See [apps/agent/README.md](apps/agent/README.md) for API URL configuration, the feature matrix, and Windows publish notes.

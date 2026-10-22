@@ -1,0 +1,414 @@
+<Window x:Class="Trilez.Agent.Desktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Trilez.Agent.Desktop"
+        Title="تری‌لیز — میز کار کارمند"
+        Language="fa-IR"
+        FlowDirection="RightToLeft"
+        FontFamily="Segoe UI, Tahoma, Arial"
+        Width="1100"
+        Height="720"
+        MinWidth="960"
+        MinHeight="640"
+        WindowStartupLocation="CenterScreen"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Display"
+        Background="#F4F6F8">
+  <Window.Resources>
+    <ResourceDictionary>
+    <ResourceDictionary.MergedDictionaries>
+      <ResourceDictionary Source="Theme.xaml" />
+    </ResourceDictionary.MergedDictionaries>
+    <local:BoolToVisibilityConverter x:Key="BoolVis" />
+    <local:InverseBoolToVisibilityConverter x:Key="InverseVis" />
+    <local:StringToVisibilityConverter x:Key="TextVis" />
+    <local:PageVisibilityConverter x:Key="PageOf" />
+    <DataTemplate x:Key="TaskCard">
+      <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <StackPanel>
+            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="16" />
+            <TextBlock Text="{Binding ProjectName}" Foreground="{StaticResource App.Muted}" Margin="0,4,0,0" />
+            <TextBlock Text="{Binding DueLabel}" Foreground="{StaticResource App.Muted}" />
+          </StackPanel>
+          <Border Grid.Column="1" Background="{StaticResource App.Chip}" CornerRadius="8" Padding="10,4" VerticalAlignment="Center">
+            <TextBlock Text="{Binding StatusLabel}" Foreground="{StaticResource App.AccentDark}" />
+          </Border>
+        </Grid>
+      </Border>
+    </DataTemplate>
+    <DataTemplate x:Key="ProjectCard">
+      <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+        <StackPanel>
+          <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="16" />
+          <TextBlock Text="{Binding Code}" Foreground="{StaticResource App.Muted}" Margin="0,4,0,0" />
+          <TextBlock Text="{Binding StatusLabel}" Foreground="{StaticResource App.Muted}" />
+          <TextBlock Text="{Binding Dates}" Foreground="{StaticResource App.Muted}" />
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+    <DataTemplate x:Key="LogCard">
+      <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <StackPanel>
+            <TextBlock Text="{Binding TaskTitle}" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding ProjectName}" Foreground="{StaticResource App.Muted}" Margin="0,4,0,0" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding DateLabel}" Foreground="{StaticResource App.Muted}" />
+            <TextBlock Text="{Binding HoursLabel}" Foreground="{StaticResource App.Muted}" />
+            <TextBlock Text="{Binding Description}" Foreground="{StaticResource App.Muted}" Margin="0,4,0,0" TextWrapping="Wrap"
+                       Visibility="{Binding Description, Converter={StaticResource TextVis}}" />
+          </StackPanel>
+          <Border Grid.Column="1" Background="{StaticResource App.Chip}" CornerRadius="8" Padding="10,4" VerticalAlignment="Center">
+            <TextBlock Text="{Binding StatusLabel}" Foreground="{StaticResource App.AccentDark}" />
+          </Border>
+        </Grid>
+      </Border>
+    </DataTemplate>
+    <DataTemplate x:Key="MeetingCard">
+      <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+        <StackPanel>
+          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="16" />
+          <TextBlock Text="{Binding WhenLabel}" Foreground="{StaticResource App.Muted}" Margin="0,4,0,0" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding DurationLabel}" Foreground="{StaticResource App.Muted}" />
+          <TextBlock Text="{Binding ProjectName}" Foreground="{StaticResource App.Muted}" />
+          <TextBlock Text="{Binding StatusLabel}" Foreground="{StaticResource App.Muted}" />
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+    <DataTemplate x:Key="NotificationCard">
+      <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+        <StackPanel>
+          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding Body}" TextWrapping="Wrap" Margin="0,4,0,0"
+                     Visibility="{Binding Body, Converter={StaticResource TextVis}}" />
+          <TextBlock Text="{Binding WhenLabel}" Foreground="{StaticResource App.Muted}" Margin="0,4,0,0" />
+          <TextBlock Text="{Binding ReadLabel}" Foreground="{StaticResource App.Muted}" />
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+    <DataTemplate x:Key="AttendanceCard">
+      <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+        <StackPanel>
+          <TextBlock Text="{Binding DateLabel}" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding StatusLabel}" Margin="0,4,0,0" />
+          <TextBlock Text="{Binding ClockLabel}" />
+          <TextBlock Text="{Binding WorkedLabel}" />
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+    </ResourceDictionary>
+  </Window.Resources>
+
+  <Grid>
+    <Grid Visibility="{Binding IsSignedIn, Converter={StaticResource InverseVis}}">
+      <Border Style="{StaticResource Card}" Width="460" Padding="28" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <StackPanel>
+          <TextBlock Text="تری‌لیز" FontSize="28" FontWeight="SemiBold" Foreground="{StaticResource App.AccentDark}" />
+          <TextBlock Text="میز کار کارمند" FontSize="16" Margin="0,4,0,8" />
+          <TextBlock Text="ایمیل و رمز عبور سازمانی خود را وارد کنید." Style="{StaticResource Hint}" />
+          <TextBlock Text="رمز عبور فقط برای همین ورود استفاده می‌شود و ذخیره نمی‌شود." Style="{StaticResource Hint}" />
+
+          <TextBlock Text="نشانی API" Style="{StaticResource FieldLabel}" />
+          <TextBox Text="{Binding ApiBaseUrl, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight" />
+          <TextBlock Text="مبدأ سرویس، مانند http://127.0.0.1. مسیر /api و نام کاربری را وارد نکنید." Style="{StaticResource Hint}" Margin="0,4,0,0" />
+
+          <TextBlock Text="ایمیل" Style="{StaticResource FieldLabel}" />
+          <TextBox Text="{Binding Email, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight" />
+
+          <TextBlock Text="رمز عبور" Style="{StaticResource FieldLabel}" />
+          <PasswordBox x:Name="PasswordInput" Style="{StaticResource SecretInput}" FlowDirection="LeftToRight" />
+
+          <Button Content="ورود" Style="{StaticResource PrimaryButton}" Margin="0,16,0,0" HorizontalAlignment="Stretch"
+                  IsDefault="True" IsEnabled="{Binding CanInteract}" Click="SignIn_Click"
+                  AutomationProperties.Name="ورود" />
+          <TextBlock Text="{Binding ErrorMessage}" Foreground="{StaticResource App.Danger}" TextWrapping="Wrap" Margin="0,12,0,0"
+                     Visibility="{Binding ErrorMessage, Converter={StaticResource TextVis}}" />
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <Grid Visibility="{Binding IsSignedIn, Converter={StaticResource BoolVis}}">
+      <Grid Visibility="{Binding PasswordChangeRequired, Converter={StaticResource InverseVis}}">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="232" />
+          <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Background="{StaticResource App.Nav}">
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Top" Margin="16,20,16,12">
+              <TextBlock Text="تری‌لیز" Foreground="White" FontSize="22" FontWeight="SemiBold" />
+              <TextBlock Text="میز کار کارمند" Foreground="#D7EFEE" Margin="0,4,0,0" />
+            </StackPanel>
+            <ListBox ItemsSource="{Binding Pages}" SelectedItem="{Binding SelectedNav}"
+                     Background="Transparent" BorderThickness="0" Foreground="White"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+              <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem">
+                  <Setter Property="Foreground" Value="White" />
+                  <Setter Property="Padding" Value="16,10" />
+                  <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                  <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                  <Setter Property="Template">
+                    <Setter.Value>
+                      <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Row" Background="Transparent" Padding="{TemplateBinding Padding}">
+                          <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                          <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Row" Property="Background" Value="#12716E" />
+                          </Trigger>
+                          <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Row" Property="Background" Value="#0B5552" />
+                          </Trigger>
+                        </ControlTemplate.Triggers>
+                      </ControlTemplate>
+                    </Setter.Value>
+                  </Setter>
+                </Style>
+              </ListBox.ItemContainerStyle>
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding Title}" FontSize="15" />
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </DockPanel>
+        </Border>
+
+        <DockPanel Grid.Column="1" Margin="20">
+          <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+              <TextBlock Text="{Binding Welcome}" FontSize="20" FontWeight="SemiBold" />
+              <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                <TextBlock Text="وضعیت اتصال" Foreground="{StaticResource App.Muted}" />
+                <TextBlock Text="{Binding ConnectionLabel}" FontWeight="SemiBold" Margin="8,0,0,0" />
+              </StackPanel>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+              <Button Content="به‌روزرسانی" Style="{StaticResource QuietButton}" IsEnabled="{Binding CanInteract}" Click="Refresh_Click" AutomationProperties.Name="به‌روزرسانی" />
+              <Button Content="خروج" Style="{StaticResource QuietButton}" IsEnabled="{Binding CanInteract}" Click="SignOut_Click" AutomationProperties.Name="خروج" />
+            </StackPanel>
+          </Grid>
+
+          <StackPanel DockPanel.Dock="Top">
+            <Border Background="{StaticResource App.DangerSurface}" CornerRadius="8" Padding="12" Margin="0,0,0,8"
+                    Visibility="{Binding ErrorMessage, Converter={StaticResource TextVis}}">
+              <TextBlock Text="{Binding ErrorMessage}" Foreground="{StaticResource App.Danger}" TextWrapping="Wrap" />
+            </Border>
+            <Border Background="{StaticResource App.WarningSurface}" CornerRadius="8" Padding="12" Margin="0,0,0,8"
+                    Visibility="{Binding IsOffline, Converter={StaticResource BoolVis}}">
+              <TextBlock Text="ارتباط با تری‌لیز برقرار نیست. داده‌های قبلی نمایش داده نمی‌شود." Foreground="{StaticResource App.Warning}" TextWrapping="Wrap" />
+            </Border>
+            <Border Background="{StaticResource App.SuccessSurface}" CornerRadius="8" Padding="12" Margin="0,0,0,8"
+                    Visibility="{Binding SuccessMessage, Converter={StaticResource TextVis}}">
+              <TextBlock Text="{Binding SuccessMessage}" Foreground="{StaticResource App.Success}" TextWrapping="Wrap" />
+            </Border>
+            <Border Background="{StaticResource App.WarningSurface}" CornerRadius="8" Padding="12" Margin="0,0,0,8"
+                    Visibility="{Binding WarningMessage, Converter={StaticResource TextVis}}">
+              <TextBlock Text="{Binding WarningMessage}" Foreground="{StaticResource App.Warning}" TextWrapping="Wrap" />
+            </Border>
+          </StackPanel>
+
+          <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel>
+              <StackPanel Visibility="{Binding SelectedNav.Page, Converter={StaticResource PageOf}, ConverterParameter=Overview}">
+                <TextBlock Text="نمای کلی" Style="{StaticResource SectionTitle}" />
+                <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+                  <StackPanel>
+                    <TextBlock Text="{Binding Identity}" FontSize="16" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding EmployeeStateLabel}" Foreground="{StaticResource App.Muted}" Margin="0,6,0,0" />
+                    <TextBlock Text="{Binding UsagePhaseLabel}" Style="{StaticResource Hint}" Margin="0,8,0,0" />
+                    <TextBlock Text="{Binding HealthPhaseLabel}" Style="{StaticResource Hint}" Margin="0,4,0,0" />
+                    <TextBlock Text="{Binding ScreenSharePhaseLabel}" Style="{StaticResource Hint}" Margin="0,4,0,0" />
+                    <TextBlock Text="{Binding ScreenShareModeLabel}" Style="{StaticResource Hint}" Margin="0,4,0,0" />
+                    <TextBlock Text="{Binding ScreenControlLabel}" Style="{StaticResource Hint}" Margin="0,4,0,0" />
+                  </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Card}">
+                  <TextBlock Text="{Binding TodaySummary}" TextWrapping="Wrap" />
+                </Border>
+              </StackPanel>
+
+              <StackPanel Visibility="{Binding SelectedNav.Page, Converter={StaticResource PageOf}, ConverterParameter=Tasks}">
+                <TextBlock Text="وظیفه‌های من" Style="{StaticResource SectionTitle}" />
+                <TextBlock Text="{Binding TasksMessage}" Style="{StaticResource Hint}" Visibility="{Binding TasksMessage, Converter={StaticResource TextVis}}" />
+                <ItemsControl ItemsSource="{Binding Tasks}" ItemTemplate="{StaticResource TaskCard}" />
+              </StackPanel>
+
+              <StackPanel Visibility="{Binding SelectedNav.Page, Converter={StaticResource PageOf}, ConverterParameter=Projects}">
+                <TextBlock Text="پروژه‌های من" Style="{StaticResource SectionTitle}" />
+                <TextBlock Text="{Binding ProjectsMessage}" Style="{StaticResource Hint}" Visibility="{Binding ProjectsMessage, Converter={StaticResource TextVis}}" />
+                <ItemsControl ItemsSource="{Binding Projects}" ItemTemplate="{StaticResource ProjectCard}" />
+              </StackPanel>
+
+              <StackPanel Visibility="{Binding SelectedNav.Page, Converter={StaticResource PageOf}, ConverterParameter=Attendance}">
+                <TextBlock Text="حضور امروز" Style="{StaticResource SectionTitle}" />
+                <TextBlock Text="{Binding WorkSessionLabel}" FontWeight="SemiBold" Margin="0,0,0,8" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding AttendanceMessage}" Style="{StaticResource Hint}" />
+                <ItemsControl ItemsSource="{Binding Attendance}" ItemTemplate="{StaticResource AttendanceCard}" />
+              </StackPanel>
+
+              <StackPanel Visibility="{Binding SelectedNav.Page, Converter={StaticResource PageOf}, ConverterParameter=WorkLogs}">
+                <TextBlock Text="ساعت‌های کاری" Style="{StaticResource SectionTitle}" />
+                <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                  <StackPanel>
+                    <TextBlock Text="ثبت ساعت روی یک وظیفه از فهرست خودتان" FontWeight="SemiBold" />
+                    <TextBlock Text="ساعت پس از پاسخ موفق سرور ثبت‌شده حساب می‌شود." Style="{StaticResource Hint}" Margin="0,4,0,0" />
+                    <TextBlock Text="وظیفه" Style="{StaticResource FieldLabel}" />
+                    <ComboBox ItemsSource="{Binding Tasks}" SelectedValue="{Binding SelectedTaskId}" SelectedValuePath="Id" DisplayMemberPath="Title" Padding="8" />
+                    <TextBlock Text="تاریخ" Style="{StaticResource FieldLabel}" />
+                    <TextBox Text="{Binding EntryDate, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight" />
+                    <TextBlock Text="ساعت" Style="{StaticResource FieldLabel}" />
+                    <TextBox Text="{Binding EntryHours, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight" />
+                    <TextBlock Text="شرح" Style="{StaticResource FieldLabel}" />
+                    <TextBox Text="{Binding EntryDescription, UpdateSourceTrigger=PropertyChanged}" />
+                    <CheckBox Content="قابل صورتحساب" IsChecked="{Binding EntryBillable}" Margin="0,12,0,0" />
+                    <Button Content="ثبت ساعت" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Margin="0,12,0,0"
+                            IsEnabled="{Binding CanSubmitTime}" Click="SubmitTime_Click" AutomationProperties.Name="ثبت ساعت" />
+                  </StackPanel>
+                </Border>
+                <TextBlock Text="{Binding WorkTimeMessage}" Style="{StaticResource Hint}" Visibility="{Binding WorkTimeMessage, Converter={StaticResource TextVis}}" />
+                <ItemsControl ItemsSource="{Binding WorkLogs}" ItemTemplate="{StaticResource LogCard}" />
+              </StackPanel>
+
+              <StackPanel Visibility="{Binding SelectedNav.Page, Converter={StaticResource PageOf}, ConverterParameter=Meetings}">
+                <TextBlock Text="جلسه‌ها" Style="{StaticResource SectionTitle}" />
+                <TextBlock Text="{Binding MeetingsMessage}" Style="{StaticResource Hint}" Visibility="{Binding MeetingsMessage, Converter={StaticResource TextVis}}" />
+                <ItemsControl ItemsSource="{Binding Meetings}" ItemTemplate="{StaticResource MeetingCard}" />
+              </StackPanel>
+
+              <StackPanel Visibility="{Binding SelectedNav.Page, Converter={StaticResource PageOf}, ConverterParameter=Notifications}">
+                <TextBlock Text="اعلان‌ها" Style="{StaticResource SectionTitle}" />
+                <TextBlock Text="{Binding NotificationsMessage}" Style="{StaticResource Hint}" Visibility="{Binding NotificationsMessage, Converter={StaticResource TextVis}}" />
+                <ItemsControl ItemsSource="{Binding Notifications}" ItemTemplate="{StaticResource NotificationCard}" />
+              </StackPanel>
+
+              <StackPanel Visibility="{Binding SelectedNav.Page, Converter={StaticResource PageOf}, ConverterParameter=Settings}">
+                <TextBlock Text="تنظیمات" Style="{StaticResource SectionTitle}" />
+                <Border Style="{StaticResource Card}">
+                  <StackPanel>
+                    <TextBlock Text="نشانی API" Style="{StaticResource FieldLabel}" Margin="0,0,0,4" />
+                    <TextBox Text="{Binding ApiBaseUrl, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight" />
+                    <TextBlock Text="اگر وارد شده باشید، نشانی جدید از ورود بعدی استفاده می‌شود." Style="{StaticResource Hint}" Margin="0,4,0,0" />
+                    <TextBlock Text="{Binding PasswordStorageLabel}" Style="{StaticResource Hint}" />
+                    <TextBlock Text="{Binding TelemetryLabel}" Style="{StaticResource Hint}" />
+                    <TextBlock Text="{Binding ScreenSharingNote}" Style="{StaticResource Hint}" />
+                    <TextBlock Text="{Binding ScreenSharePhaseLabel}" Style="{StaticResource Hint}" />
+                    <TextBlock Text="{Binding ScreenShareModeLabel}" Style="{StaticResource Hint}" />
+                    <TextBlock Text="{Binding ScreenControlLabel}" Style="{StaticResource Hint}" />
+                    <TextBlock Text="{Binding DeviceCredentialSeparate}" Style="{StaticResource Hint}" />
+                    <CheckBox Content="با روشن شدن ویندوز، تری‌لیز باز شود. این گزینه در برنامه‌های شروع ویندوز دیده می‌شود."
+                              IsChecked="{Binding StartWithWindows}" Margin="0,8,0,0"
+                              AutomationProperties.Name="شروع همراه ویندوز" />
+                    <Button Content="ذخیره تنظیمات" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left"
+                            IsEnabled="{Binding CanInteract}" Click="SaveSettings_Click" AutomationProperties.Name="ذخیره تنظیمات" />
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+
+              <StackPanel Visibility="{Binding SelectedNav.Page, Converter={StaticResource PageOf}, ConverterParameter=Help}">
+                <TextBlock Text="راهنما و عیب‌یابی" Style="{StaticResource SectionTitle}" />
+                <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+                  <TextBlock Text="{Binding Diagnostics}" TextWrapping="Wrap" FlowDirection="RightToLeft" />
+                </Border>
+                <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+                  <StackPanel>
+                    <TextBlock Text="دستگاه" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding EnrollmentStateLabel}" Margin="0,8,0,0" />
+                    <TextBlock Text="{Binding EnrollmentConnectionLabel}" Style="{StaticResource Hint}" />
+                    <TextBlock Text="{Binding EnrollmentDetail}" TextWrapping="Wrap" Margin="0,4,0,8" />
+                    <TextBlock Text="نام نمایشی" Style="{StaticResource FieldLabel}" Margin="0,0,0,4" />
+                    <TextBox Text="{Binding DeviceName, UpdateSourceTrigger=PropertyChanged}" MaxLength="80" AutomationProperties.Name="نام نمایشی دستگاه" />
+                    <TextBlock Text="{Binding CapabilitiesNote}" Style="{StaticResource Hint}" Margin="0,4,0,0" />
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                      <Button Content="ثبت دستگاه" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"
+                              IsEnabled="{Binding CanEnrollDevice}" Click="EnrollDevice_Click" AutomationProperties.Name="ثبت دستگاه" />
+                      <Button Content="لغو ثبت دستگاه" Style="{StaticResource QuietButton}"
+                              IsEnabled="{Binding CanUnregisterDevice}" Click="UnregisterDevice_Click" AutomationProperties.Name="لغو ثبت دستگاه" />
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+                  <StackPanel>
+                    <TextBlock Text="جمع‌آوری استفاده" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding UsagePhaseLabel}" Margin="0,8,0,0" />
+                    <TextBlock Text="{Binding UsageDetail}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                    <TextBlock Text="{Binding TelemetryLabel}" Style="{StaticResource Hint}" />
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                      <Button Content="توقف جمع‌آوری" Style="{StaticResource QuietButton}" Margin="0,0,8,0"
+                              IsEnabled="{Binding CanPauseUsage}" Click="PauseUsage_Click" AutomationProperties.Name="توقف جمع‌آوری" />
+                      <Button Content="ادامه جمع‌آوری" Style="{StaticResource QuietButton}"
+                              IsEnabled="{Binding CanResumeUsage}" Click="ResumeUsage_Click" AutomationProperties.Name="ادامه جمع‌آوری" />
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+                  <StackPanel>
+                    <TextBlock Text="سلامت دستگاه" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding HealthPhaseLabel}" Margin="0,8,0,0" />
+                    <TextBlock Text="{Binding HealthDetail}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                    <TextBlock Text="{Binding TelemetryLabel}" Style="{StaticResource Hint}" />
+                  </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Card}">
+                  <StackPanel>
+                    <TextBlock Text="اشتراک صفحه" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding ScreenSharePhaseLabel}" Margin="0,8,0,0" />
+                    <TextBlock Text="{Binding ScreenShareModeLabel}" Margin="0,4,0,0" />
+                    <TextBlock Text="{Binding ScreenControlLabel}" Margin="0,4,0,0" />
+                    <TextBlock Text="{Binding ScreenShareDetail}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                    <TextBlock Text="{Binding ScreenSharingNote}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                      <Button Content="پذیرش مشاهده" Style="{StaticResource QuietButton}" Margin="0,0,8,0"
+                              IsEnabled="{Binding CanAcceptScreenShare}" Click="AcceptScreenShare_Click" AutomationProperties.Name="پذیرش مشاهده" />
+                      <Button Content="توقف اشتراک" Style="{StaticResource QuietButton}"
+                              IsEnabled="{Binding CanStopScreenShare}" Click="StopScreenShare_Click" AutomationProperties.Name="توقف اشتراک" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                      <Button Content="پذیرش کنترل" Style="{StaticResource QuietButton}" Margin="0,0,8,0"
+                              IsEnabled="{Binding CanGrantControl}" Click="GrantScreenControl_Click" AutomationProperties.Name="پذیرش کنترل" />
+                      <Button Content="رد کنترل" Style="{StaticResource QuietButton}" Margin="0,0,8,0"
+                              IsEnabled="{Binding CanDenyControl}" Click="DenyScreenControl_Click" AutomationProperties.Name="رد کنترل" />
+                      <Button Content="لغو کنترل" Style="{StaticResource QuietButton}"
+                              IsEnabled="{Binding CanRevokeControl}" Click="RevokeScreenControl_Click" AutomationProperties.Name="لغو کنترل" />
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </StackPanel>
+          </ScrollViewer>
+        </DockPanel>
+      </Grid>
+
+      <Grid Visibility="{Binding PasswordChangeRequired, Converter={StaticResource BoolVis}}">
+        <Border Style="{StaticResource Card}" Width="480" Padding="28" HorizontalAlignment="Center" VerticalAlignment="Center">
+          <StackPanel>
+            <TextBlock Text="تری‌لیز" FontSize="24" FontWeight="SemiBold" Foreground="{StaticResource App.AccentDark}" />
+            <TextBlock Text="{Binding ErrorMessage}" FontSize="16" TextWrapping="Wrap" Margin="0,12,0,8" />
+            <TextBlock Text="تغییر رمز در این نسخه از میز کار انجام نمی‌شود. از پنل تری‌لیز رمز را تغییر دهید و دوباره وارد شوید." Style="{StaticResource Hint}" />
+            <Button Content="خروج" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Click="SignOut_Click" AutomationProperties.Name="خروج" />
+          </StackPanel>
+        </Border>
+      </Grid>
+    </Grid>
+
+    <Border Background="#CCF4F6F8" Visibility="{Binding IsBusy, Converter={StaticResource BoolVis}}" IsHitTestVisible="True">
+      <TextBlock Text="{Binding LoadingLabel}" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center" />
+    </Border>
+  </Grid>
+</Window>

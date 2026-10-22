@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>12</LangVersion>
+    <RootNamespace>Trilez.Agent.Presentation</RootNamespace>
+    <Version>0.2.0</Version>
+    <Description>Presentation logic for the Trilez employee desktop. Avalonia and WPF shells bind to this library and do not call HTTP themselves.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Trilez.Agent.Core\Trilez.Agent.Core.csproj" />
+  </ItemGroup>
+</Project>
