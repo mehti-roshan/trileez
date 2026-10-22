@@ -78,6 +78,12 @@ docker compose down
 
 The containers are intentionally small: multi-stage Alpine Node images, an Alpine Nginx runtime, an explicit single-node `weed mini -dir=/data -admin.port=22646` SeaweedFS service, capped log files, health checks, and conservative memory limits. SeaweedFS readiness is checked through the master status endpoint rather than the credential-protected S3 root. MongoDB and SeaweedFS are the only stateful services.
 
+## CI/CD
+
+GitHub Actions tests the API, panel, and Linux desktop agent on every pull request. A successful push to `main` publishes `server` and `web` images to GitHub Container Registry and SSHs to the VPS to pull those images. The VPS keeps MongoDB, SeaweedFS, and `.env`; it does not `git pull` for routine releases.
+
+One-time secrets, SSH key setup, and manual VPS commands are in [docs/cicd.md](docs/cicd.md).
+
 ## Production operations
 
 The API writes one structured JSON object per log line to stdout/stderr. Request logs include bounded HTTP metadata, latency, status, request ID, and correlation ID; password, token, credential, and secret fields are recursively redacted. Security-sensitive authentication and authorization decisions are emitted as `security_event` records and durable business audit records remain in MongoDB.

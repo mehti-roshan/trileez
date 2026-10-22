@@ -1,0 +1,190 @@
+name: CI/CD
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+  DOTNET_VERSION: "8.0.x"
+  DOTNET_SYSTEM_NET_HTTP_SOCKETSHTTPHANDLER_HTTP2SUPPORT: "false"
+
+jobs:
+  server:
+    name: API
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/server/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  web:
+    name: Panel
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - name: Unit tests
+        run: npx --yes tsx --test tests/*.test.ts
+
+  agent:
+    name: Desktop agent
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+          cache: true
+          cache-dependency-path: apps/agent/**/*.csproj
+      - name: Restore and test Linux agent
+        run: |
+          chmod +x scripts/linux/dev.sh
+          ./scripts/linux/dev.sh all
+
+  publish:
+    name: Publish images
+    needs: [server, web, agent]
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      actions: write
+    outputs:
+      image_prefix: ${{ steps.meta.outputs.prefix }}
+      image_tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        run: |
+          prefix="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          echo "tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push API
+        uses: docker/build-push-action@v6
+        with:
+          context: ./apps/server
+          file: ./apps/server/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.prefix }}/server:${{ github.sha }}
+            ${{ steps.meta.outputs.prefix }}/server:latest
+          build-args: |
+            NPM_REGISTRY=https://registry.npmjs.org/
+          provenance: false
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,mode=max,scope=server
+      - name: Build and push panel
+        uses: docker/build-push-action@v6
+        with:
+          context: ./apps/web
+          file: ./apps/web/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.prefix }}/web:${{ github.sha }}
+            ${{ steps.meta.outputs.prefix }}/web:latest
+          build-args: |
+            NPM_REGISTRY=https://registry.npmjs.org/
+            VITE_API_BASE_URL=/api
+          provenance: false
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  deploy:
+    name: Deploy VPS
+    needs: publish
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    concurrency:
+      group: production-vps
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require VPS secrets
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}
+        run: |
+          missing=0
+          for name in VPS_HOST VPS_USER VPS_SSH_KEY VPS_DEPLOY_PATH; do
+            if [[ -z "${!name}" ]]; then
+              echo "$name is not set in GitHub Actions secrets."
+              missing=1
+            fi
+          done
+          if [[ "$missing" -ne 0 ]]; then
+            echo "Add the VPS secrets listed in docs/cicd.md, then re-run this workflow."
+            exit 1
+          fi
+      - name: Copy compose files
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ vars.VPS_SSH_PORT || 22 }}
+          source: "compose.yaml,deploy/vps.sh"
+          target: ${{ secrets.VPS_DEPLOY_PATH }}
+          overwrite: true
+          strip_components: 0
+      - name: Pull images and recreate panel
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ vars.VPS_SSH_PORT || 22 }}
+          command_timeout: 15m
+          envs: GHCR_USER,GHCR_TOKEN,IMAGE_PREFIX,IMAGE_TAG,DEPLOY_DIR
+          script: |
+            set -euo pipefail
+            chmod +x "$DEPLOY_DIR/deploy/vps.sh"
+            "$DEPLOY_DIR/deploy/vps.sh"
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+          IMAGE_PREFIX: ${{ needs.publish.outputs.image_prefix }}
+          IMAGE_TAG: ${{ needs.publish.outputs.image_tag }}
+          DEPLOY_DIR: ${{ secrets.VPS_DEPLOY_PATH }}

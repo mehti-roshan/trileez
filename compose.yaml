@@ -143,6 +143,7 @@ services:
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
 
   web:
+    image: ${WEB_IMAGE:-trivix-web:local}
     build:
       context: ./apps/web
       dockerfile: Dockerfile
