@@ -44,11 +44,13 @@ The key's user must be able to run `docker` and `docker compose` without a TTY p
 | `VPS_DEPLOY_PATH` | Absolute path that contains `compose.yaml` and `.env` |
 | `GHCR_TOKEN` | Optional. Classic PAT with `read:packages` if the VPS cannot pull with the workflow `GITHUB_TOKEN` |
 
-Optional repository variable:
+SSH port: add a **repository variable** (Settings → Secrets and variables → Actions → **Variables**), not an Environment variable and not a secret:
 
 | Variable | Value |
 | --- | --- |
-| `VPS_SSH_PORT` | SSH port if it is not 22 |
+| `VPS_SSH_PORT` | `9011` (or your SSH port) |
+
+`VPS_PORT` as a variable or secret is also accepted. The deploy log line `Using SSH port …` shows which value was picked.
 
 7. Push this branch to `main`, or run **Actions → CI/CD → Run workflow**.
 

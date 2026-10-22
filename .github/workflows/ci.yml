@@ -158,13 +158,24 @@ jobs:
             echo "Add the VPS secrets listed in docs/cicd.md, then re-run this workflow."
             exit 1
           fi
+      - name: Resolve SSH port
+        id: ssh
+        env:
+          VAR_SSH_PORT: ${{ vars.VPS_SSH_PORT }}
+          VAR_PORT: ${{ vars.VPS_PORT }}
+          SECRET_SSH_PORT: ${{ secrets.VPS_SSH_PORT }}
+          SECRET_PORT: ${{ secrets.VPS_PORT }}
+        run: |
+          port="${VAR_SSH_PORT:-${VAR_PORT:-${SECRET_SSH_PORT:-${SECRET_PORT:-22}}}}"
+          echo "port=$port" >> "$GITHUB_OUTPUT"
+          echo "Using SSH port $port"
       - name: Copy compose files
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ vars.VPS_SSH_PORT || 22 }}
+          port: ${{ steps.ssh.outputs.port }}
           source: "compose.yaml,deploy/vps.sh"
           target: ${{ secrets.VPS_DEPLOY_PATH }}
           overwrite: true
@@ -175,7 +186,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ vars.VPS_SSH_PORT || 22 }}
+          port: ${{ steps.ssh.outputs.port }}
           command_timeout: 15m
           envs: GHCR_USER,GHCR_TOKEN,IMAGE_PREFIX,IMAGE_TAG,DEPLOY_DIR
           script: |
