@@ -169,44 +169,54 @@ jobs:
           port="${VAR_SSH_PORT:-${VAR_PORT:-${SECRET_SSH_PORT:-${SECRET_PORT:-22}}}}"
           echo "port=$port" >> "$GITHUB_OUTPUT"
           echo "Using SSH port $port"
-      - name: Install deploy key
-        env:
-          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+      - name: Encode files for SSH
+        id: pack
         run: |
-          mkdir -p "$HOME/.ssh"
-          chmod 700 "$HOME/.ssh"
-          printf '%s\n' "$SSH_KEY" | tr -d '\r' > "$HOME/.ssh/deploy_key"
-          chmod 600 "$HOME/.ssh/deploy_key"
+          echo "compose=$(base64 -w0 compose.yaml)" >> "$GITHUB_OUTPUT"
+          echo "script=$(base64 -w0 deploy/vps.sh)" >> "$GITHUB_OUTPUT"
       - name: Copy compose files
+        uses: appleboy/ssh-action@v1.2.2
         env:
-          SSH_HOST: ${{ secrets.VPS_HOST }}
-          SSH_USER: ${{ secrets.VPS_USER }}
-          SSH_PORT: ${{ steps.ssh.outputs.port }}
+          COMPOSE_B64: ${{ steps.pack.outputs.compose }}
+          SCRIPT_B64: ${{ steps.pack.outputs.script }}
           DEPLOY_DIR: ${{ secrets.VPS_DEPLOY_PATH }}
-        run: |
-          ssh_opts=(-i "$HOME/.ssh/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
-          ssh "${ssh_opts[@]}" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$DEPLOY_DIR/deploy'"
-          scp "${ssh_opts[@]}" -P "$SSH_PORT" compose.yaml "$SSH_USER@$SSH_HOST:$DEPLOY_DIR/compose.yaml"
-          scp "${ssh_opts[@]}" -P "$SSH_PORT" deploy/vps.sh "$SSH_USER@$SSH_HOST:$DEPLOY_DIR/deploy/vps.sh"
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ steps.ssh.outputs.port }}
+          protocol: tcp4
+          timeout: 30s
+          command_timeout: 2m
+          script_stop: true
+          envs: COMPOSE_B64,SCRIPT_B64,DEPLOY_DIR
+          script: |
+            set -euo pipefail
+            mkdir -p "$DEPLOY_DIR/deploy"
+            printf '%s' "$COMPOSE_B64" | base64 -d > "$DEPLOY_DIR/compose.yaml.tmp"
+            mv "$DEPLOY_DIR/compose.yaml.tmp" "$DEPLOY_DIR/compose.yaml"
+            printf '%s' "$SCRIPT_B64" | base64 -d > "$DEPLOY_DIR/deploy/vps.sh.tmp"
+            mv "$DEPLOY_DIR/deploy/vps.sh.tmp" "$DEPLOY_DIR/deploy/vps.sh"
+            chmod +x "$DEPLOY_DIR/deploy/vps.sh"
       - name: Pull images and recreate panel
+        uses: appleboy/ssh-action@v1.2.2
         env:
-          SSH_HOST: ${{ secrets.VPS_HOST }}
-          SSH_USER: ${{ secrets.VPS_USER }}
-          SSH_PORT: ${{ steps.ssh.outputs.port }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
           IMAGE_PREFIX: ${{ needs.publish.outputs.image_prefix }}
           IMAGE_TAG: ${{ needs.publish.outputs.image_tag }}
           DEPLOY_DIR: ${{ secrets.VPS_DEPLOY_PATH }}
-        run: |
-          ssh_opts=(-i "$HOME/.ssh/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
-          {
-            echo "set -euo pipefail"
-            echo "export GHCR_USER=$(printf '%q' "$GHCR_USER")"
-            echo "export GHCR_TOKEN=$(printf '%q' "$GHCR_TOKEN")"
-            echo "export IMAGE_PREFIX=$(printf '%q' "$IMAGE_PREFIX")"
-            echo "export IMAGE_TAG=$(printf '%q' "$IMAGE_TAG")"
-            echo "export DEPLOY_DIR=$(printf '%q' "$DEPLOY_DIR")"
-            echo 'chmod +x "$DEPLOY_DIR/deploy/vps.sh"'
-            echo '"$DEPLOY_DIR/deploy/vps.sh"'
-          } | ssh "${ssh_opts[@]}" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash -s
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ steps.ssh.outputs.port }}
+          protocol: tcp4
+          timeout: 30s
+          command_timeout: 15m
+          script_stop: true
+          envs: GHCR_USER,GHCR_TOKEN,IMAGE_PREFIX,IMAGE_TAG,DEPLOY_DIR
+          script: |
+            set -euo pipefail
+            chmod +x "$DEPLOY_DIR/deploy/vps.sh"
+            "$DEPLOY_DIR/deploy/vps.sh"
