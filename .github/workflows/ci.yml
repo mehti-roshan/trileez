@@ -134,12 +134,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: read
+      packages: write
     concurrency:
       group: production-vps
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
       - name: Require VPS secrets
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
@@ -169,42 +168,13 @@ jobs:
           port="${VAR_SSH_PORT:-${VAR_PORT:-${SECRET_SSH_PORT:-${SECRET_PORT:-22}}}}"
           echo "port=$port" >> "$GITHUB_OUTPUT"
           echo "Using SSH port $port"
-      - name: Encode files for SSH
-        id: pack
-        run: |
-          echo "compose=$(base64 -w0 compose.yaml)" >> "$GITHUB_OUTPUT"
-          echo "script=$(base64 -w0 deploy/vps.sh)" >> "$GITHUB_OUTPUT"
-      - name: Copy compose files
-        uses: appleboy/ssh-action@v1.2.2
-        env:
-          COMPOSE_B64: ${{ steps.pack.outputs.compose }}
-          SCRIPT_B64: ${{ steps.pack.outputs.script }}
-          DEPLOY_DIR: ${{ secrets.VPS_DEPLOY_PATH }}
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ steps.ssh.outputs.port }}
-          protocol: tcp4
-          timeout: 30s
-          command_timeout: 2m
-          script_stop: true
-          envs: COMPOSE_B64,SCRIPT_B64,DEPLOY_DIR
-          script: |
-            set -euo pipefail
-            mkdir -p "$DEPLOY_DIR/deploy"
-            printf '%s' "$COMPOSE_B64" | base64 -d > "$DEPLOY_DIR/compose.yaml.tmp"
-            mv "$DEPLOY_DIR/compose.yaml.tmp" "$DEPLOY_DIR/compose.yaml"
-            printf '%s' "$SCRIPT_B64" | base64 -d > "$DEPLOY_DIR/deploy/vps.sh.tmp"
-            mv "$DEPLOY_DIR/deploy/vps.sh.tmp" "$DEPLOY_DIR/deploy/vps.sh"
-            chmod +x "$DEPLOY_DIR/deploy/vps.sh"
-      - name: Pull images and recreate panel
+      - name: Write image tags and recreate panel
         uses: appleboy/ssh-action@v1.2.2
         env:
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
-          IMAGE_PREFIX: ${{ needs.publish.outputs.image_prefix }}
-          IMAGE_TAG: ${{ needs.publish.outputs.image_tag }}
+          SERVER_IMAGE: ${{ needs.publish.outputs.image_prefix }}/server:${{ needs.publish.outputs.image_tag }}
+          WEB_IMAGE: ${{ needs.publish.outputs.image_prefix }}/web:${{ needs.publish.outputs.image_tag }}
           DEPLOY_DIR: ${{ secrets.VPS_DEPLOY_PATH }}
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -212,11 +182,41 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ steps.ssh.outputs.port }}
           protocol: tcp4
-          timeout: 30s
-          command_timeout: 15m
-          script_stop: true
-          envs: GHCR_USER,GHCR_TOKEN,IMAGE_PREFIX,IMAGE_TAG,DEPLOY_DIR
+          timeout: 60s
+          command_timeout: 10m
+          request_pty: true
+          envs: GHCR_USER,GHCR_TOKEN,SERVER_IMAGE,WEB_IMAGE,DEPLOY_DIR
           script: |
-            set -euo pipefail
-            chmod +x "$DEPLOY_DIR/deploy/vps.sh"
-            "$DEPLOY_DIR/deploy/vps.sh"
+            set -eu
+            echo "deploy_dir=$DEPLOY_DIR"
+            echo "server_image=$SERVER_IMAGE"
+            echo "web_image=$WEB_IMAGE"
+            echo "token_len=${#GHCR_TOKEN}"
+            test -n "$DEPLOY_DIR"
+            test -n "$SERVER_IMAGE"
+            test -n "$WEB_IMAGE"
+            test -n "$GHCR_USER"
+            test -n "$GHCR_TOKEN"
+            cd "$DEPLOY_DIR"
+            test -f compose.yaml
+            test -f .env
+            umask 077
+            printf 'SERVER_IMAGE=%s\nWEB_IMAGE=%s\n' "$SERVER_IMAGE" "$WEB_IMAGE" > .env.images
+            printf '%s\n' 'services:' '  server:' '    image: ${SERVER_IMAGE}' '  web:' '    image: ${WEB_IMAGE}' > compose.override.yaml
+            printf '%s\n' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            timeout 6m docker compose --env-file .env --env-file .env.images pull server web
+            docker compose --env-file .env --env-file .env.images up -d --no-build --remove-orphans server web
+            docker compose --env-file .env --env-file .env.images ps
+            WEB_PORT=$(awk -F= '/^WEB_PORT=/{print $2}' .env | tail -n 1)
+            WEB_PORT=${WEB_PORT:-80}
+            i=0
+            while [ "$i" -lt 20 ]; do
+              if curl -fsS --max-time 5 "http://127.0.0.1:${WEB_PORT}/api/health/live"; then
+                echo
+                exit 0
+              fi
+              i=$((i + 1))
+              sleep 3
+            done
+            docker compose --env-file .env --env-file .env.images logs --tail=80 server web
+            exit 1

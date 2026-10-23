@@ -54,7 +54,9 @@ SSH port: add a **repository variable** (Settings → Secrets and variables → 
 
 7. Push this branch to `main`, or run **Actions → CI/CD → Run workflow**.
 
-The first deploy also creates `.env.images` in `VPS_DEPLOY_PATH` with the image tags that are currently live. That file is gitignored.
+Each deploy writes `.env.images` and `compose.override.yaml` in `VPS_DEPLOY_PATH`. The `compose.yaml` already on the VPS is left in place. Those two generated files are gitignored.
+
+`GITHUB_TOKEN` is often empty on the VPS. Create a classic PAT with `read:packages` and store it as secret `GHCR_TOKEN`.
 
 ## Manual commands on the VPS
 

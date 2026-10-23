@@ -4,6 +4,7 @@ node_modules/
 dist/
 .env
 .env.images
+compose.override.yaml
 *.log
 apps/agent/**/bin/
 apps/agent/**/obj/
