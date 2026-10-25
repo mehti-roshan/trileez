@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Run from the deploy user's home: clone trileez if missing, sync, compose up.
 set -eu
 EXPECTED_SHA="${EXPECTED_SHA:-origin/main}"
 REPO="${REPO:-mehti-roshan/trileez}"
 GIT_TOKEN="${GIT_TOKEN:-}"
+export GIT_TERMINAL_PROMPT=0
 
 cd
 git_auth() {
