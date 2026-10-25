@@ -1,4 +1,4 @@
-# Trivix panel
+# Trilez panel
 
 Persian RTL organization panel built as a MERN application:
 
@@ -28,25 +28,25 @@ Local endpoints:
 - Readiness: `http://localhost/api/health/ready`
 - Prometheus-format metrics: `http://localhost/api/metrics`
 
-Only Nginx is published to the host. Express, MongoDB, and SeaweedFS remain private on the Compose network; browser API requests use the same-origin `/api` route.
+The edge Nginx reverse proxy is the only published host port. The panel, API, MongoDB, Redis, and SeaweedFS stay on the Compose network. Browser API requests use the same-origin `/api` route.
+
+Infrastructure services (MongoDB, Redis, SeaweedFS, edge Nginx) live in `infra.yaml` and are pulled in from `compose.yaml`.
 
 Production does not create demo users. After the stack is healthy, create the first administrator once with transient bootstrap values:
 
 ```bash
-export BOOTSTRAP_ORGANIZATION_ID=org1
 export BOOTSTRAP_ADMIN_EMAIL=admin@your-company.example
 export BOOTSTRAP_ADMIN_NAME='System administrator'
 read -rsp 'Initial admin password: ' BOOTSTRAP_ADMIN_PASSWORD && export BOOTSTRAP_ADMIN_PASSWORD
 docker compose run --rm \
-  -e BOOTSTRAP_ORGANIZATION_ID \
   -e BOOTSTRAP_ADMIN_EMAIL \
   -e BOOTSTRAP_ADMIN_NAME \
   -e BOOTSTRAP_ADMIN_PASSWORD \
-  server npm run bootstrap-admin
+  api npm run bootstrap-admin
 unset BOOTSTRAP_ADMIN_PASSWORD
 ```
 
-The command enforces the backend password policy, is safe to retry for the same active administrator, records an audit entry, and forces a password change on first login. It never prints the password. Keep `AUTO_SEED=false` in production.
+The command assigns a generated MongoDB ObjectId as the organization id, enforces the backend password policy, is safe to retry for the same active administrator, records an audit entry, and forces a password change on first login. It never prints the password. Keep `AUTO_SEED=false` in production.
 
 ## Seed an internally testable MVP
 
@@ -69,12 +69,12 @@ The frontend does not import or upload this data. It reads the seeded records th
 Useful commands:
 
 ```bash
-docker compose logs -f server web
-docker compose restart server
+docker compose logs -f api frontend nginx
+docker compose restart api
 docker compose down
 ```
 
-`docker compose down` preserves MongoDB and SeaweedFS data. Adding `--volumes` deletes both persistent data volumes and should only be used when a full local reset is intended.
+`docker compose down` preserves MongoDB, Redis, and SeaweedFS data. Adding `--volumes` deletes those volumes and should only be used when a full local reset is intended.
 
 The containers are intentionally small: multi-stage Alpine Node images, an Alpine Nginx runtime, an explicit single-node `weed mini -dir=/data -admin.port=22646` SeaweedFS service, capped log files, health checks, and conservative memory limits. SeaweedFS readiness is checked through the master status endpoint rather than the credential-protected S3 root. MongoDB and SeaweedFS are the only stateful services.
 
@@ -99,7 +99,7 @@ MongoDB and object-storage initialization use bounded exponential retry with jit
 Backend:
 
 ```bash
-cd apps/server
+cd apps/api
 cp .env.example .env
 npm install
 npm run dev
@@ -108,13 +108,13 @@ npm run dev
 Frontend:
 
 ```bash
-cd apps/web
+cd apps/frontend
 cp .env.example .env
 npm install
 npm run dev
 ```
 
-The local API defaults to an in-memory database and in-memory object storage. Those modes are rejected when `NODE_ENV=production`. To exercise real persistence, use Compose or configure `MONGO_URI`, `USE_MOCK_DB=false`, `STORAGE_DRIVER=s3`, and the S3 variables in `apps/server/.env`.
+The local API defaults to an in-memory database and in-memory object storage. Those modes are rejected when `NODE_ENV=production`. To exercise real persistence, use Compose or configure `MONGO_URI`, `USE_MOCK_DB=false`, `STORAGE_DRIVER=s3`, and the S3 variables in `apps/api/.env`.
 
 ## File storage
 
@@ -127,15 +127,15 @@ Deletion is recoverable and idempotent at the storage-provider layer. The recurr
 ## Validation
 
 ```bash
-cd apps/server
+cd apps/api
 npm run typecheck
 npm test
 
-cd ../web
+cd ../frontend
 npm run build
 ```
 
-See [apps/server/README.md](apps/server/README.md) for the API route overview.
+See [apps/api/README.md](apps/api/README.md) for the API route overview.
 
 ## Employee desktop agent
 
