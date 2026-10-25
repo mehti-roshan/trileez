@@ -1,8 +1,6 @@
 FROM node:24-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
-ARG NPM_REGISTRY=https://package-mirror.liara.ir/repository/npm/
-RUN npm config set registry "$NPM_REGISTRY" --global
 RUN npm ci
 COPY . .
 ARG VITE_API_BASE_URL=/api

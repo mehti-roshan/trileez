@@ -1,4 +1,4 @@
-name: trivix
+name: trileez
 
 x-logging: &default-logging
   driver: json-file
@@ -56,7 +56,7 @@ services:
     logging: *default-logging
 
   server:
-    image: ${SERVER_IMAGE:-trivix-server:local}
+    image: ${SERVER_IMAGE:-trileez-server:local}
     build:
       context: ./apps/server
       dockerfile: Dockerfile
@@ -69,7 +69,7 @@ services:
       - no-new-privileges:true
     environment:
       NODE_ENV: production
-      SERVICE_NAME: trivix-panel-api
+      SERVICE_NAME: trileez-panel-api
       APP_VERSION: ${APP_VERSION:-0.1.0}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: 4000
@@ -138,12 +138,12 @@ services:
     environment:
       AUTO_SEED: "false"
       JOBS_ENABLED: "false"
-      EMAIL_FROM: ${SEED_EMAIL_FROM:-seed@trivix.ir}
+      EMAIL_FROM: ${SEED_EMAIL_FROM:-seed@trileez.ir}
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
 
   web:
-    image: ${WEB_IMAGE:-trivix-web:local}
+    image: ${WEB_IMAGE:-trileez-web:local}
     build:
       context: ./apps/web
       dockerfile: Dockerfile
@@ -169,4 +169,4 @@ services:
 volumes:
   mongo-data:
   seaweedfs-data:
-    name: trivix-seaweedfs-data
+    name: trileez-seaweedfs-data
