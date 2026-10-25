@@ -1,22 +1,24 @@
 #!/usr/bin/env bash
-# Point the existing VPS compose.yaml at GHCR images and recreate server/web.
+# Run from the deploy user's home: clone trileez if missing, sync, compose up.
 set -eu
+EXPECTED_SHA="${EXPECTED_SHA:-origin/main}"
+REPO="${REPO:-mehti-roshan/trileez}"
+GIT_TOKEN="${GIT_TOKEN:-}"
 
-: "${GHCR_USER:?}"
-: "${GHCR_TOKEN:?}"
-: "${SERVER_IMAGE:?}"
-: "${WEB_IMAGE:?}"
+cd
+git_auth() {
+  if [ -n "$GIT_TOKEN" ]; then
+    git -c http.extraHeader="AUTHORIZATION: bearer ${GIT_TOKEN}" "$@"
+  else
+    git "$@"
+  fi
+}
 
-DEPLOY_DIR="${DEPLOY_DIR:-.}"
-cd "$DEPLOY_DIR"
-test -f compose.yaml
-test -f .env
-
-umask 077
-printf 'SERVER_IMAGE=%s\nWEB_IMAGE=%s\n' "$SERVER_IMAGE" "$WEB_IMAGE" > .env.images
-printf '%s\n' 'services:' '  server:' '    image: ${SERVER_IMAGE}' '  web:' '    image: ${WEB_IMAGE}' > compose.override.yaml
-
-printf '%s\n' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
-timeout 6m docker compose --env-file .env --env-file .env.images pull server web
-docker compose --env-file .env --env-file .env.images up -d --no-build --remove-orphans server web
-docker compose --env-file .env --env-file .env.images ps
+if [ ! -d trileez ]; then
+  git_auth clone "https://github.com/${REPO}.git" trileez
+fi
+cd trileez
+git_auth fetch origin
+git reset --hard "$EXPECTED_SHA"
+docker compose --env-file .env up -d --build
+docker compose --env-file .env ps

@@ -72,69 +72,11 @@ jobs:
           chmod +x scripts/linux/dev.sh
           ./scripts/linux/dev.sh all
 
-  publish:
-    name: Publish images
+  deploy:
+    name: Deploy VPS
     needs: [server, web, agent]
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-      actions: write
-    outputs:
-      image_prefix: ${{ steps.meta.outputs.prefix }}
-      image_tag: ${{ steps.meta.outputs.tag }}
-    steps:
-      - uses: actions/checkout@v4
-      - id: meta
-        run: |
-          prefix="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
-          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
-          echo "tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push API
-        uses: docker/build-push-action@v6
-        with:
-          context: ./apps/server
-          file: ./apps/server/Dockerfile
-          push: true
-          tags: |
-            ${{ steps.meta.outputs.prefix }}/server:${{ github.sha }}
-            ${{ steps.meta.outputs.prefix }}/server:latest
-          build-args: |
-            NPM_REGISTRY=https://registry.npmjs.org/
-          provenance: false
-          cache-from: type=gha,scope=server
-          cache-to: type=gha,mode=max,scope=server
-      - name: Build and push panel
-        uses: docker/build-push-action@v6
-        with:
-          context: ./apps/web
-          file: ./apps/web/Dockerfile
-          push: true
-          tags: |
-            ${{ steps.meta.outputs.prefix }}/web:${{ github.sha }}
-            ${{ steps.meta.outputs.prefix }}/web:latest
-          build-args: |
-            NPM_REGISTRY=https://registry.npmjs.org/
-            VITE_API_BASE_URL=/api
-          provenance: false
-          cache-from: type=gha,scope=web
-          cache-to: type=gha,mode=max,scope=web
-
-  deploy:
-    name: Deploy VPS
-    needs: publish
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     concurrency:
       group: production-vps
       cancel-in-progress: false
@@ -144,17 +86,16 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-          VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}
         run: |
           missing=0
-          for name in VPS_HOST VPS_USER VPS_SSH_KEY VPS_DEPLOY_PATH; do
+          for name in VPS_HOST VPS_USER VPS_SSH_KEY; do
             if [[ -z "${!name}" ]]; then
               echo "$name is not set in GitHub Actions secrets."
               missing=1
             fi
           done
           if [[ "$missing" -ne 0 ]]; then
-            echo "Add the VPS secrets listed in docs/cicd.md, then re-run this workflow."
+            echo "Add VPS_HOST, VPS_USER, and VPS_SSH_KEY, then re-run."
             exit 1
           fi
       - name: Resolve SSH port
@@ -168,14 +109,12 @@ jobs:
           port="${VAR_SSH_PORT:-${VAR_PORT:-${SECRET_SSH_PORT:-${SECRET_PORT:-22}}}}"
           echo "port=$port" >> "$GITHUB_OUTPUT"
           echo "Using SSH port $port"
-      - name: Write image tags and recreate panel
+      - name: Clone or sync trileez and compose up
         uses: appleboy/ssh-action@v1.2.2
         env:
-          GHCR_USER: ${{ github.actor }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
-          SERVER_IMAGE: ${{ needs.publish.outputs.image_prefix }}/server:${{ needs.publish.outputs.image_tag }}
-          WEB_IMAGE: ${{ needs.publish.outputs.image_prefix }}/web:${{ needs.publish.outputs.image_tag }}
-          DEPLOY_DIR: ${{ secrets.VPS_DEPLOY_PATH }}
+          EXPECTED_SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN || secrets.GITHUB_TOKEN }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
@@ -183,40 +122,24 @@ jobs:
           port: ${{ steps.ssh.outputs.port }}
           protocol: tcp4
           timeout: 60s
-          command_timeout: 10m
+          command_timeout: 25m
           request_pty: true
-          envs: GHCR_USER,GHCR_TOKEN,SERVER_IMAGE,WEB_IMAGE,DEPLOY_DIR
+          envs: EXPECTED_SHA,REPO,GIT_TOKEN
           script: |
             set -eu
-            echo "deploy_dir=$DEPLOY_DIR"
-            echo "server_image=$SERVER_IMAGE"
-            echo "web_image=$WEB_IMAGE"
-            echo "token_len=${#GHCR_TOKEN}"
-            test -n "$DEPLOY_DIR"
-            test -n "$SERVER_IMAGE"
-            test -n "$WEB_IMAGE"
-            test -n "$GHCR_USER"
-            test -n "$GHCR_TOKEN"
-            cd "$DEPLOY_DIR"
-            test -f compose.yaml
-            test -f .env
-            umask 077
-            printf 'SERVER_IMAGE=%s\nWEB_IMAGE=%s\n' "$SERVER_IMAGE" "$WEB_IMAGE" > .env.images
-            printf '%s\n' 'services:' '  server:' '    image: ${SERVER_IMAGE}' '  web:' '    image: ${WEB_IMAGE}' > compose.override.yaml
-            printf '%s\n' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
-            timeout 6m docker compose --env-file .env --env-file .env.images pull server web
-            docker compose --env-file .env --env-file .env.images up -d --no-build --remove-orphans server web
-            docker compose --env-file .env --env-file .env.images ps
-            WEB_PORT=$(awk -F= '/^WEB_PORT=/{print $2}' .env | tail -n 1)
-            WEB_PORT=${WEB_PORT:-80}
-            i=0
-            while [ "$i" -lt 20 ]; do
-              if curl -fsS --max-time 5 "http://127.0.0.1:${WEB_PORT}/api/health/live"; then
-                echo
-                exit 0
+            cd
+            git_auth() {
+              if [ -n "${GIT_TOKEN:-}" ]; then
+                git -c http.extraHeader="AUTHORIZATION: bearer ${GIT_TOKEN}" "$@"
+              else
+                git "$@"
               fi
-              i=$((i + 1))
-              sleep 3
-            done
-            docker compose --env-file .env --env-file .env.images logs --tail=80 server web
-            exit 1
+            }
+            if [ ! -d trileez ]; then
+              git_auth clone "https://github.com/${REPO}.git" trileez
+            fi
+            cd trileez
+            git_auth fetch origin
+            git reset --hard "$EXPECTED_SHA"
+            docker compose --env-file .env up -d --build
+            docker compose --env-file .env ps

@@ -80,9 +80,9 @@ The containers are intentionally small: multi-stage Alpine Node images, an Alpin
 
 ## CI/CD
 
-GitHub Actions tests the API, panel, and Linux desktop agent on every pull request. A successful push to `main` publishes `server` and `web` images to GitHub Container Registry and SSHs to the VPS to pull those images. The VPS keeps MongoDB, SeaweedFS, and `.env`; it does not `git pull` for routine releases.
+GitHub Actions tests the API, panel, and Linux desktop agent on every pull request. A successful push to `main` SSHs to the VPS, clones `~/trileez` if it is missing, resets it to that commit, and runs `docker compose up --build`.
 
-One-time secrets, SSH key setup, and manual VPS commands are in [docs/cicd.md](docs/cicd.md).
+Secrets are in [docs/cicd.md](docs/cicd.md).
 
 ## Production operations
 
