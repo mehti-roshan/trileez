@@ -9,7 +9,10 @@ export default function LoginPage({ onLogin }: { onLogin: (email: string, passwo
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setError(''); setSubmitting(true);
     try { await onLogin(email, password); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'ورود انجام نشد.'); }
+    catch (reason) {
+      const message = reason instanceof Error ? reason.message : 'ورود انجام نشد.';
+      setError(message === 'Password change required' ? 'برای ادامه باید رمز عبور را تغییر دهید.' : message);
+    }
     finally { setSubmitting(false); }
   };
   return <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', bgcolor: 'background.default', p: 2, direction: 'rtl' }}>

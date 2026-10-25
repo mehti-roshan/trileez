@@ -10,12 +10,14 @@ const TOKEN_KEY = 'trileez-api-token';
 export class ApiError extends Error {
   readonly status: number;
   readonly code?: string;
+  readonly issues?: { message?: string }[];
 
-  constructor(message: string, status: number, code?: string) {
+  constructor(message: string, status: number, code?: string, issues?: { message?: string }[]) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    this.issues = issues;
   }
 }
 
@@ -37,8 +39,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     } else localStorage.removeItem(TOKEN_KEY);
   }
   if (response.status === 204) return undefined as T;
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new ApiError(payload.error || `API request failed (${response.status})`, response.status, payload.code);
+  const payload = await response.json().catch(() => ({})) as { error?: string; code?: string; issues?: { message?: string }[] };
+  if (!response.ok) {
+    const issues = Array.isArray(payload.issues) ? payload.issues : undefined;
+    const detail = issues?.map((issue) => issue.message).filter(Boolean).join(' ');
+    throw new ApiError(detail || payload.error || `API request failed (${response.status})`, response.status, payload.code, issues);
+  }
   return payload as T;
 }
 
@@ -77,6 +83,11 @@ export const apiClient = {
     localStorage.setItem(TOKEN_KEY, result.token);
     return result;
   },
+  changePassword: async (currentPassword: string, newPassword: string) => {
+    const result = await request<{ token: string; user: ApiUser }>('/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) });
+    localStorage.setItem(TOKEN_KEY, result.token);
+    return result;
+  },
   logout: async () => {
     try { await request<void>('/auth/logout', { method: 'POST' }); } finally { localStorage.removeItem(TOKEN_KEY); }
   },
@@ -106,3 +117,11 @@ export const apiClient = {
 };
 
 export function hasApiToken() { return typeof localStorage !== 'undefined' && Boolean(localStorage.getItem(TOKEN_KEY)); }
+
+export function requiresPasswordChange(error: unknown): boolean {
+  return error instanceof ApiError && error.code === 'PASSWORD_CHANGE_REQUIRED';
+}
+
+export function userMustChangePassword(user: { mustChangePassword?: boolean } | null | undefined): boolean {
+  return Boolean(user?.mustChangePassword);
+}

@@ -17,7 +17,7 @@ export type DeviceStatus = 'online' | 'offline' | 'busy';
 export type SessionStatus = 'pending' | 'active' | 'ended' | 'rejected';
 export type TicketCategory = 'bug' | 'feature' | 'support' | 'other';
 
-export interface User { id: string; organizationId?: string; organizationName?: string; name: string; firstName?: string; lastName?: string; email: string; phone?: string; role: UserRole; status: UserStatus; isActive: boolean; title: string; customerId?: string; avatar?: string; permissionOverrides?: PermissionOverrides; credentialHash?: string }
+export interface User { id: string; organizationId?: string; organizationName?: string; name: string; firstName?: string; lastName?: string; email: string; phone?: string; role: UserRole; status: UserStatus; isActive: boolean; title: string; customerId?: string; avatar?: string; permissionOverrides?: PermissionOverrides; credentialHash?: string; mustChangePassword?: boolean }
 export interface RoleDefinition { id: UserRole; label: string; permissions: PermissionKey[] }
 export interface Organization { id: string; name: string; slug: string }
 export interface FileFolder { id: string; name: string; parentId?: string; createdAt: string; deletedAt?: string }
